@@ -1,12 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Clipper runtime artifacts
+storage/
+*.db
+
+# Node (frontend)
 node_modules/
 dist/
 
-# secrets — never commit real keys
+# Secrets — never commit real keys
 .env
 .env.local
 .env.*.local
 .env.example
 
-# logs / misc
+# Misc
 *.log
 .DS_Store

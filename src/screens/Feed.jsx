@@ -5,12 +5,9 @@ import SubjectTag from '../components/SubjectTag.jsx'
 import RelevanceBadge from '../components/RelevanceBadge.jsx'
 import usePrefersReducedMotion from '../hooks/usePrefersReducedMotion.js'
 
-const SLIDE_MS = 8000 // mock "playback" length before auto-advance
-
-// Screen 2 — immersive, swipeable, ranked reel feed.
+// Screen 2 — immersive, swipeable reel feed playing the rendered clips.
 export default function Feed({
   clips,
-  selected,
   focusIndex = 0,
   onOpen,
   onEdit,
@@ -23,15 +20,14 @@ export default function Feed({
   const slideRefs = useRef([])
   const [active, setActive] = useState(focusIndex)
   const [playing, setPlaying] = useState(true)
+  const [soundOn, setSoundOn] = useState(false)
   const [progress, setProgress] = useState(0)
 
-  // jump to the clip we last viewed when coming back from the player
   useEffect(() => {
     slideRefs.current[focusIndex]?.scrollIntoView({ block: 'start' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // which slide is on screen
   useEffect(() => {
     const io = new IntersectionObserver(
       (entries) => {
@@ -47,38 +43,22 @@ export default function Feed({
     return () => io.disconnect()
   }, [clips.length])
 
+  useEffect(() => setProgress(0), [active])
+
   const goTo = (i) =>
     slideRefs.current[i]?.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' })
-
-  // mock playback progress on the active slide, then auto-advance
-  useEffect(() => {
-    setProgress(0)
-    if (reduced || !playing) return
-    let raf
-    let start
-    const tick = (t) => {
-      if (start == null) start = t
-      const p = Math.min((t - start) / SLIDE_MS, 1)
-      setProgress(p)
-      if (p < 1) raf = requestAnimationFrame(tick)
-      else if (active < clips.length - 1) goTo(active + 1)
-    }
-    raf = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(raf)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, playing, reduced, clips.length])
 
   if (clips.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
         <p className="text-[16px] leading-6 text-gray-900">
-          No clips for these subjects yet. Edit your subjects to see more.
+          No clips yet. Paste a YouTube link to generate some.
         </p>
         <button
           onClick={onEdit}
           className="h-10 rounded-sm bg-gray-1000 px-4 text-[14px] font-medium text-bg-100"
         >
-          Edit Subjects
+          New Clips
         </button>
       </div>
     )
@@ -99,15 +79,31 @@ export default function Feed({
           <button
             onClick={onOpenGraph}
             aria-label="Open memory graph"
-            className="flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-3 text-[13px] font-medium text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
+            className="grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
               <circle cx="6" cy="6" r="2.5" stroke="currentColor" strokeWidth="2" />
               <circle cx="18" cy="9" r="2.5" stroke="currentColor" strokeWidth="2" />
               <circle cx="9" cy="18" r="2.5" stroke="currentColor" strokeWidth="2" />
               <path d="M8 7.5l8 1M8 8l1 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            Memory
+          </button>
+          <button
+            onClick={() => setSoundOn((s) => !s)}
+            aria-label={soundOn ? 'Mute' : 'Unmute'}
+            className="grid h-9 w-9 place-items-center rounded-full bg-white/15 text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
+          >
+            {soundOn ? (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+                <path d="M16 8a5 5 0 010 8M18.5 5.5a9 9 0 010 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <path d="M4 9v6h4l5 4V5L8 9H4z" fill="currentColor" />
+                <path d="M16 9l5 6M21 9l-5 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            )}
           </button>
           <button
             onClick={onEdit}
@@ -116,16 +112,13 @@ export default function Feed({
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
               <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
             </svg>
-            Subjects
+            New
           </button>
         </div>
       </div>
 
       {/* snap feed */}
-      <div
-        ref={containerRef}
-        className="no-scrollbar h-full snap-y snap-mandatory overflow-y-scroll"
-      >
+      <div ref={containerRef} className="no-scrollbar h-full snap-y snap-mandatory overflow-y-scroll">
         {clips.map((clip, i) => (
           <section
             key={clip.id}
@@ -133,7 +126,14 @@ export default function Feed({
             ref={(el) => (slideRefs.current[i] = el)}
             className="relative h-full w-full snap-start snap-always"
           >
-            <ClipStage clip={clip}>
+            <ClipStage
+              clip={clip}
+              playing={i === active && playing}
+              active={i === active}
+              muted={!soundOn}
+              onTime={(p) => i === active && setProgress(p)}
+              onEnded={() => active < clips.length - 1 && goTo(active + 1)}
+            >
               {/* tap layer: toggle play */}
               <button
                 aria-label={playing ? 'Pause' : 'Play'}
@@ -141,7 +141,6 @@ export default function Feed({
                 className="absolute inset-0 z-0"
               />
 
-              {/* paused indicator */}
               {i === active && !playing && (
                 <div className="pointer-events-none absolute inset-0 grid place-items-center">
                   <div className="grid h-16 w-16 place-items-center rounded-full bg-black/35 text-white ring-1 ring-white/30 animate-pop">
@@ -152,12 +151,10 @@ export default function Feed({
                 </div>
               )}
 
-              {/* action rail */}
               <div className="absolute bottom-32 right-3 z-10">
                 <ActionRail clip={clip} onSaveLesson={onSaveLesson} onSaveError={onSaveError} />
               </div>
 
-              {/* bottom meta */}
               <div
                 className={`absolute inset-x-0 bottom-0 z-10 px-4 pb-7 pr-20 ${
                   i === active && !reduced ? 'animate-fade-up' : ''
@@ -188,7 +185,6 @@ export default function Feed({
                 </button>
               </div>
 
-              {/* playback progress */}
               <div className="absolute inset-x-0 bottom-0 z-20 h-1 bg-white/20">
                 <div
                   className="h-full bg-white"
@@ -200,9 +196,8 @@ export default function Feed({
         ))}
       </div>
 
-      {/* rank context */}
       <div className="pointer-events-none absolute bottom-3 left-4 z-20 font-mono text-[12px] text-white/55">
-        {active + 1}/{clips.length} · ranked by relevance
+        {active + 1}/{clips.length} · ranked by score
       </div>
     </div>
   )

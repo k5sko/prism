@@ -1,9 +1,11 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Mount the memory API inside the dev server so `npm run dev` runs the whole
-// app — frontend + /api/memory/* — with no second process and no proxy.
-// The same handler also runs standalone via `node server/index.js`.
+// Mount the memory API (/api/memory/*) inside the dev server so it runs in the
+// same process as the frontend. This middleware runs BEFORE the proxy below, so
+// memory requests are handled in-process and everything else under /api falls
+// through to the clipper FastAPI backend. The same handler also runs standalone
+// via `node server/index.js`.
 function memoryApi() {
   return {
     name: 'memory-api',
@@ -27,4 +29,12 @@ function memoryApi() {
 
 export default defineConfig({
   plugins: [react(), memoryApi()],
+  server: {
+    // Clipper FastAPI backend. /api/memory is served in-process (above); all
+    // other /api/* requests are proxied here. Run it with:
+    //   .venv/bin/uvicorn clipper.api:app --port 8000
+    proxy: {
+      '/api': 'http://localhost:8000',
+    },
+  },
 })
