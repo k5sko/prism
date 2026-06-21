@@ -6,7 +6,7 @@ import RelevanceBadge from '../components/RelevanceBadge.jsx'
 import usePrefersReducedMotion from '../hooks/usePrefersReducedMotion.js'
 
 // Screen 2 — immersive, swipeable reel feed playing the rendered clips.
-export default function Feed({ clips, focusIndex = 0, onOpen, onEdit }) {
+export default function Feed({ clips, scoped = false, focusIndex = 0, onOpen, onEdit, onShowAll }) {
   const reduced = usePrefersReducedMotion()
   const containerRef = useRef(null)
   const slideRefs = useRef([])
@@ -85,6 +85,14 @@ export default function Feed({ clips, focusIndex = 0, onOpen, onEdit }) {
               </svg>
             )}
           </button>
+          {scoped && (
+            <button
+              onClick={onShowAll}
+              className="flex h-9 items-center rounded-full bg-white/15 px-3 text-[13px] font-medium text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
+            >
+              All clips
+            </button>
+          )}
           <button
             onClick={onEdit}
             className="flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-3 text-[13px] font-medium text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
@@ -177,7 +185,7 @@ export default function Feed({ clips, focusIndex = 0, onOpen, onEdit }) {
       </div>
 
       <div className="pointer-events-none absolute bottom-3 left-4 z-20 font-mono text-[12px] text-white/55">
-        {active + 1}/{clips.length} · ranked by score
+        {active + 1}/{clips.length} · {scoped ? 'this topic' : 'ranked by score'}
       </div>
     </div>
   )

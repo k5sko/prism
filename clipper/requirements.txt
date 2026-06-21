@@ -16,6 +16,7 @@ groq==1.0.0
 # --- API (frontend bridge) ---
 fastapi==0.128.8
 uvicorn[standard]==0.39.0
+python-multipart==0.0.20    # multipart form parsing for MP4 upload
 
 # --- tests ---
 pytest==8.4.2

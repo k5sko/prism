@@ -14,8 +14,9 @@ async function asJson(res) {
   return res.json()
 }
 
-export async function listClips() {
-  return asJson(await fetch('/api/clips'))
+export async function listClips(jobId) {
+  const q = jobId ? `?job_id=${encodeURIComponent(jobId)}` : ''
+  return asJson(await fetch(`/api/clips${q}`))
 }
 
 export async function createJob(url) {
@@ -30,4 +31,20 @@ export async function createJob(url) {
 
 export async function getJob(jobId) {
   return asJson(await fetch(`/api/jobs/${jobId}`))
+}
+
+export async function searchTopic(query) {
+  return asJson(
+    await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query }),
+    }),
+  )
+}
+
+export async function uploadVideo(file) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return asJson(await fetch('/api/upload', { method: 'POST', body: fd }))
 }

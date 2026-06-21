@@ -17,15 +17,20 @@ from __future__ import annotations
 
 import asyncio
 import os
+import uuid
 from contextlib import asynccontextmanager
+from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlmodel import select
 
+from .config import get_settings
 from .db import Clip, ClipStatus, Job, init_db, session_scope
+from .finder import find_video
+from .llm import LLMClient
 from .pipeline import orchestrator
 from .storage import get_storage, read_json
 
@@ -83,11 +88,16 @@ def _shape(clip: Clip, channel: str) -> dict:
 
 
 @app.get("/api/clips")
-def list_clips():
+def list_clips(job_id: Optional[str] = None):
+    """Ready clips ranked by score. Pass job_id to scope to one video's clips
+    (so a topic search shows only that topic, hiding the rest of the library)."""
     storage = get_storage()
     cache: dict = {}
     with session_scope() as s:
-        clips = s.exec(select(Clip).where(Clip.status == ClipStatus.READY)).all()
+        stmt = select(Clip).where(Clip.status == ClipStatus.READY)
+        if job_id:
+            stmt = stmt.where(Clip.job_id == job_id)
+        clips = s.exec(stmt).all()
         jobs = {j.id: j for j in s.exec(select(Job)).all()}
         clips = sorted(clips, key=lambda c: c.score, reverse=True)
         out = []
@@ -130,6 +140,46 @@ async def create_job(body: JobIn):
     job_id = orchestrator.create_job(url)
     asyncio.create_task(_run_job(job_id))
     return {"job_id": job_id, "status": "queued"}
+
+
+class SearchIn(BaseModel):
+    query: str
+
+
+@app.post("/api/search")
+async def search_topic(body: SearchIn):
+    """Topic → find a video on a vetted channel → start a clipping job.
+
+    Returns needs_clarification (vague query) / not_found, or found + job_id.
+    """
+    q = (body.query or "").strip()
+    if not q:
+        raise HTTPException(400, "query is required")
+    result = await asyncio.to_thread(find_video, q, LLMClient())
+    if result.get("status") != "found":
+        return result
+    video = result["video"]
+    job_id = orchestrator.create_job(video["url"])
+    asyncio.create_task(_run_job(job_id))
+    return {"status": "found", "job_id": job_id, "video": video, "reason": result.get("reason", "")}
+
+
+@app.post("/api/upload")
+async def upload_video(file: UploadFile = File(...)):
+    """Accept an uploaded MP4 and start a clipping job for it."""
+    uploads = os.path.join(get_settings().storage_root, "_uploads")
+    os.makedirs(uploads, exist_ok=True)
+    safe = os.path.basename(file.filename or "upload.mp4")
+    dest = os.path.join(uploads, f"{uuid.uuid4().hex[:8]}_{safe}")
+    with open(dest, "wb") as out:
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            out.write(chunk)
+    job_id = orchestrator.create_job(dest, source="upload")
+    asyncio.create_task(_run_job(job_id))
+    return {"job_id": job_id, "status": "queued", "filename": safe}
 
 
 @app.get("/api/jobs/{job_id}")

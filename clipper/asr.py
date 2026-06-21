@@ -138,6 +138,11 @@ def _groq_to_transcript(resp) -> dict:
     }
 
 
+# 16kHz mono s16 WAV ≈ 32 KB/s, so 8 min ≈ 15 MB — safely under Groq's ~25 MB
+# upload limit. Longer audio is chunked and the timestamps stitched back.
+_GROQ_CHUNK_SECONDS = 480
+
+
 class GroqTranscriber(Transcriber):
     def __init__(self) -> None:
         from .config import get_settings
@@ -146,25 +151,82 @@ class GroqTranscriber(Transcriber):
         self.api_key = s.groq_api_key
         self.model = s.groq_model
         self.language = s.asr_language
+        self.chunk_seconds = _GROQ_CHUNK_SECONDS
 
-    def transcribe(self, audio_path: str) -> dict:
-        import os
-
+    def _client(self):
         try:
             from groq import Groq
         except ImportError as e:  # pragma: no cover
             raise RuntimeError("groq SDK not installed; `pip install groq`") from e
+        return Groq(api_key=self.api_key) if self.api_key else Groq()
 
-        client = Groq(api_key=self.api_key) if self.api_key else Groq()
+    def _call(self, client, audio_path: str):
+        import os
+
         with open(audio_path, "rb") as fh:
-            resp = client.audio.transcriptions.create(
+            return client.audio.transcriptions.create(
                 file=(os.path.basename(audio_path), fh.read()),
                 model=self.model,
                 response_format="verbose_json",
                 timestamp_granularities=["word", "segment"],
                 language=self.language or None,
             )
-        return _groq_to_transcript(resp)
+
+    def transcribe(self, audio_path: str) -> dict:
+        import os
+        import tempfile
+
+        from . import ffmpeg as ff
+
+        client = self._client()
+        duration = ff.probe_duration(audio_path)
+
+        # Small enough to upload in one shot.
+        if duration <= self.chunk_seconds + 1:
+            return _groq_to_transcript(self._call(client, audio_path))
+
+        # Chunk to stay under Groq's upload size limit; offset each chunk's
+        # timestamps by its start so the merged transcript is continuous.
+        tmpdir = tempfile.mkdtemp()
+        merged = []
+        seg_id = 0
+        language = None
+        t = 0.0
+        try:
+            while t < duration:
+                clen = min(self.chunk_seconds, duration - t)
+                cpath = os.path.join(tmpdir, f"chunk_{int(t)}.wav")
+                ff.run_ffmpeg([
+                    "-ss", f"{t:.3f}", "-i", audio_path, "-t", f"{clen:.3f}",
+                    "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", cpath,
+                ])
+                part = _groq_to_transcript(self._call(client, cpath))
+                language = language or part.get("language")
+                for seg in part["segments"]:
+                    merged.append(
+                        {
+                            "id": seg_id,
+                            "start": _r(seg["start"] + t),
+                            "end": _r(seg["end"] + t),
+                            "text": seg["text"],
+                            "words": [
+                                {"word": w["word"], "start": _r(w["start"] + t), "end": _r(w["end"] + t)}
+                                for w in seg["words"]
+                            ],
+                        }
+                    )
+                    seg_id += 1
+                try:
+                    os.remove(cpath)
+                except OSError:
+                    pass
+                t += clen
+        finally:
+            try:
+                os.rmdir(tmpdir)
+            except OSError:
+                pass
+        return {"language": language or "en", "duration": _r(duration), "segments": merged}
 
 
 def get_transcriber() -> Transcriber:

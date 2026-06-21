@@ -1,64 +1,128 @@
 import { useEffect, useRef, useState } from 'react'
-import { createJob, getJob } from '../api.js'
+import { createJob, getJob, searchTopic, uploadVideo } from '../api.js'
+import JobProgress from '../components/JobProgress.jsx'
 
-// Screen 1 — paste a YouTube URL (or local path) and run the clipper pipeline,
-// or browse clips already in the library.
-const STAGE_LABEL = {
-  queued: 'Queued…',
-  ingesting: 'Downloading & extracting audio…',
-  transcribing: 'Transcribing…',
-  segmenting: 'Finding self-contained moments…',
-  rendering: 'Rendering clips…',
-  labeling: 'Writing titles & summaries…',
-  done: 'Done',
-  error: 'Failed',
-}
+// Screen 1 — three ways in: search a topic (finds a vetted-channel video),
+// paste a YouTube link, or upload an MP4. A stepped progress bar shows exactly
+// what the pipeline is doing and which stage failed.
+const MODES = [
+  { id: 'topic', label: 'Topic' },
+  { id: 'youtube', label: 'YouTube link' },
+  { id: 'upload', label: 'Upload MP4' },
+]
 
 export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
+  const [mode, setMode] = useState('topic')
+  const [topic, setTopic] = useState('')
   const [url, setUrl] = useState('')
-  const [running, setRunning] = useState(false)
-  const [status, setStatus] = useState(null)
+  const [file, setFile] = useState(null)
+
+  const [busy, setBusy] = useState(false)
+  const [stage, setStage] = useState(null)
+  const [jobStarted, setJobStarted] = useState(false)
   const [error, setError] = useState(null)
+  const [clarify, setClarify] = useState(null) // {message, suggestions}
+  const [found, setFound] = useState(null) // {title, channel}
   const cancelled = useRef(false)
 
-  useEffect(() => () => (cancelled.current = true), [])
-
+  useEffect(() => {
+    // Reset on (re)mount so React StrictMode's mount→unmount→remount in dev
+    // doesn't leave the flag stuck true and freeze polling.
+    cancelled.current = false
+    return () => {
+      cancelled.current = true
+    }
+  }, [])
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
-  const generate = async () => {
-    const v = url.trim()
-    if (!v || running) return
-    setRunning(true)
+  const reset = () => {
     setError(null)
-    setStatus('queued')
-    try {
-      const { job_id } = await createJob(v)
-      // poll until terminal
-      // eslint-disable-next-line no-constant-condition
-      while (!cancelled.current) {
-        await sleep(2000)
-        const job = await getJob(job_id)
-        setStatus(job.status)
-        if (job.status === 'done') {
-          if (!cancelled.current) await onDone()
-          return
-        }
-        if (job.status === 'error') {
-          setError(job.error || 'The job failed.')
-          setRunning(false)
-          return
-        }
+    setClarify(null)
+    setFound(null)
+    setJobStarted(false)
+    setStage(null)
+    setBusy(true)
+  }
+  const stop = () => setBusy(false)
+
+  const pollJob = async (jobId) => {
+    setStage('queued')
+    while (!cancelled.current) {
+      await sleep(2000)
+      const job = await getJob(jobId)
+      if (job.status === 'done') {
+        setStage('done')
+        if (!cancelled.current) await onDone(jobId)
+        return
       }
+      if (job.status === 'error') {
+        setError(job.error || 'The job failed.') // keep last live stage so it shows as failed
+        return stop()
+      }
+      setStage(job.status)
+    }
+  }
+
+  const runTopic = async (override) => {
+    const q = (override ?? topic).trim()
+    if (!q || busy) return
+    if (override) setTopic(override)
+    reset()
+    setStage('searching')
+    try {
+      const r = await searchTopic(q)
+      if (r.status === 'needs_clarification') {
+        setClarify({ message: r.message, suggestions: r.suggestions || [] })
+        return stop()
+      }
+      if (r.status !== 'found') {
+        setError(r.message || 'No matching video found.')
+        return stop()
+      }
+      setFound(r.video)
+      setJobStarted(true)
+      await pollJob(r.job_id)
     } catch (e) {
       setError(String(e.message || e))
-      setRunning(false)
+      stop()
+    }
+  }
+
+  const runUrl = async () => {
+    const u = url.trim()
+    if (!u || busy) return
+    reset()
+    setStage('queued')
+    try {
+      const { job_id } = await createJob(u)
+      setJobStarted(true)
+      await pollJob(job_id)
+    } catch (e) {
+      setError(String(e.message || e))
+      stop()
+    }
+  }
+
+  const runUpload = async () => {
+    if (!file || busy) return
+    reset()
+    setStage('uploading')
+    try {
+      const { job_id } = await uploadVideo(file)
+      setJobStarted(true)
+      await pollJob(job_id)
+    } catch (e) {
+      setError(String(e.message || e))
+      stop()
     }
   }
 
   const keyHint =
-    error && /api_key|x-api-key|authentication|401|ANTHROPIC/i.test(error)
-      ? 'Looks like the Anthropic API key is missing or invalid. Set ANTHROPIC_API_KEY in clipper/.env and restart the backend.'
+    error && /api_key|x-api-key|authentication|401|ANTHROPIC|GROQ/i.test(error)
+      ? 'An API key may be missing/invalid — check ANTHROPIC_API_KEY (and GROQ_API_KEY if using Groq) in clipper/.env, then restart the backend.'
       : null
+
+  const showProgress = busy || (error && jobStarted)
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
@@ -69,69 +133,152 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
       </div>
 
       <div className="relative flex h-full flex-col px-5 pb-5 pt-9">
-        <header className="mb-7">
+        <header className="mb-6">
           <p className="mb-2 font-mono text-[13px] text-gray-900">Reel Learning</p>
           <h1 className="text-[34px] font-semibold leading-[40px] tracking-[-1.4px] text-gray-1000">
-            Turn a video into
-            <br />a feed of clips.
+            Learn anything,
+            <br />as a feed of clips.
           </h1>
-          <p className="mt-2.5 text-[16px] leading-6 text-gray-900">
-            Paste a YouTube link. We transcribe it, find the self-contained moments, and cut clips that never break mid-sentence.
-          </p>
         </header>
 
-        <div className="flex gap-2">
-          <input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && generate()}
-            placeholder="https://youtube.com/watch?v=…"
-            disabled={running}
-            className="h-12 flex-1 rounded-sm border border-gray-a-400 bg-bg-100 px-3 text-[16px] leading-5 text-gray-1000 shadow-raised placeholder:text-gray-700 disabled:bg-gray-100"
-          />
-          <button
-            onClick={generate}
-            disabled={!url.trim() || running}
-            className="h-12 rounded-sm bg-gray-1000 px-4 text-[16px] font-medium text-bg-100 transition-colors duration-150 ease-geist hover:bg-gray-900 disabled:bg-gray-100 disabled:text-gray-700"
-          >
-            {running ? 'Working…' : 'Generate'}
-          </button>
+        {/* mode tabs */}
+        <div className="mb-4 flex gap-1 rounded-md bg-gray-100 p-1">
+          {MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => !busy && setMode(m.id)}
+              disabled={busy}
+              className={`h-9 flex-1 rounded-sm text-[13px] font-medium transition-colors duration-150 ease-geist disabled:opacity-50 ${
+                mode === m.id ? 'bg-bg-100 text-gray-1000 shadow-raised' : 'text-gray-900 hover:text-gray-1000'
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
 
-        {/* progress / error */}
+        {/* TOPIC */}
+        {mode === 'topic' && (
+          <>
+            <div className="flex gap-2">
+              <input
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && runTopic()}
+                placeholder="What do you want to learn? e.g. the chain rule"
+                disabled={busy}
+                className="h-12 flex-1 rounded-sm border border-gray-a-400 bg-bg-100 px-3 text-[16px] leading-5 text-gray-1000 shadow-raised placeholder:text-gray-700 disabled:bg-gray-100"
+              />
+              <button
+                onClick={() => runTopic()}
+                disabled={!topic.trim() || busy}
+                className="h-12 rounded-sm bg-gray-1000 px-4 text-[16px] font-medium text-bg-100 transition-colors duration-150 ease-geist hover:bg-gray-900 disabled:bg-gray-100 disabled:text-gray-700"
+              >
+                Find
+              </button>
+            </div>
+            <p className="mt-2 text-[12px] leading-4 text-gray-700">
+              Searches pre-vetted channels for a focused video, then clips it.
+            </p>
+          </>
+        )}
+
+        {/* YOUTUBE */}
+        {mode === 'youtube' && (
+          <div className="flex gap-2">
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && runUrl()}
+              placeholder="https://youtube.com/watch?v=…"
+              disabled={busy}
+              className="h-12 flex-1 rounded-sm border border-gray-a-400 bg-bg-100 px-3 text-[16px] leading-5 text-gray-1000 shadow-raised placeholder:text-gray-700 disabled:bg-gray-100"
+            />
+            <button
+              onClick={runUrl}
+              disabled={!url.trim() || busy}
+              className="h-12 rounded-sm bg-gray-1000 px-4 text-[16px] font-medium text-bg-100 transition-colors duration-150 ease-geist hover:bg-gray-900 disabled:bg-gray-100 disabled:text-gray-700"
+            >
+              Generate
+            </button>
+          </div>
+        )}
+
+        {/* UPLOAD */}
+        {mode === 'upload' && (
+          <div className="flex flex-col gap-2">
+            <label className="flex h-24 cursor-pointer items-center justify-center rounded-md border border-dashed border-gray-a-400 bg-bg-100 text-center text-[14px] text-gray-900 hover:bg-gray-100">
+              <input
+                type="file"
+                accept="video/mp4,video/*"
+                disabled={busy}
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+                className="hidden"
+              />
+              {file ? `Selected: ${file.name}` : 'Choose an MP4 file…'}
+            </label>
+            <button
+              onClick={runUpload}
+              disabled={!file || busy}
+              className="h-12 rounded-sm bg-gray-1000 px-4 text-[16px] font-medium text-bg-100 transition-colors duration-150 ease-geist hover:bg-gray-900 disabled:bg-gray-100 disabled:text-gray-700"
+            >
+              Generate
+            </button>
+          </div>
+        )}
+
+        {/* status area */}
         <div className="mt-5 flex-1 overflow-y-auto no-scrollbar">
-          {running && (
-            <div className="flex items-center gap-3 rounded-md border border-gray-a-200 bg-bg-100 p-4 shadow-raised">
-              <span className="h-4 w-4 animate-spin rounded-full border-2 border-gray-300 border-t-gray-1000" />
-              <div>
-                <p className="text-[14px] font-medium text-gray-1000">{STAGE_LABEL[status] || 'Working…'}</p>
-                <p className="mt-0.5 text-[12px] text-gray-700">
-                  First run downloads the Whisper model and can take a few minutes.
-                </p>
-              </div>
+          {found && (
+            <p className="mb-3 text-[13px] leading-5 text-gray-900">
+              Found <span className="font-medium text-gray-1000">“{found.title}”</span> — {found.channel}
+            </p>
+          )}
+
+          {showProgress && (
+            <>
+              <JobProgress mode={mode} stage={stage} error={error && jobStarted ? error : null} />
+              {error && jobStarted && (
+                <div className="mt-3 rounded-md border border-red-400 bg-red-100 p-3">
+                  <p className="break-words text-[13px] leading-5 text-red-900/90">{error}</p>
+                  {keyHint && <p className="mt-1.5 text-[13px] leading-5 text-red-900/90">{keyHint}</p>}
+                </div>
+              )}
+            </>
+          )}
+
+          {clarify && (
+            <div className="rounded-md border border-amber-400 bg-amber-100 p-4">
+              <p className="text-[14px] leading-5 text-amber-900">{clarify.message}</p>
+              {clarify.suggestions.length > 0 && (
+                <div className="mt-2.5 flex flex-wrap gap-2">
+                  {clarify.suggestions.map((s) => (
+                    <button
+                      key={s}
+                      onClick={() => runTopic(s)}
+                      className="rounded-full border border-amber-600/40 bg-bg-100 px-3 py-1 text-[13px] text-amber-900 transition-colors duration-150 ease-geist hover:bg-amber-100"
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {error && (
+          {error && !jobStarted && (
             <div className="rounded-md border border-red-400 bg-red-100 p-4">
-              <p className="text-[14px] font-medium text-red-900">Couldn’t make clips</p>
+              <p className="text-[14px] font-medium text-red-900">Couldn’t start</p>
               <p className="mt-1 break-words text-[13px] leading-5 text-red-900/90">{error}</p>
               {keyHint && <p className="mt-2 text-[13px] leading-5 text-red-900/90">{keyHint}</p>}
             </div>
           )}
-
-          {!running && !error && (
-            <p className="text-[13px] leading-5 text-gray-700">
-              Needs an Anthropic API key in <span className="font-mono">clipper/.env</span> and a running backend
-              (<span className="font-mono">uvicorn clipper.api:app</span>).
-            </p>
-          )}
         </div>
 
-        {libraryCount > 0 && (
+        {libraryCount > 0 && !busy && (
           <button
             onClick={onBrowse}
-            className="group flex h-12 w-full items-center justify-center gap-2 rounded-sm border border-gray-a-400 bg-bg-100 text-[16px] font-medium text-gray-1000 transition-colors duration-150 ease-geist hover:bg-gray-100"
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-sm border border-gray-a-400 bg-bg-100 text-[16px] font-medium text-gray-1000 transition-colors duration-150 ease-geist hover:bg-gray-100"
           >
             Browse library
             <span className="rounded-full bg-gray-100 px-2 py-0.5 font-mono text-[12px] text-gray-900">
