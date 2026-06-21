@@ -7,7 +7,16 @@ import { formatDuration } from '../data/mockClips.js'
 import usePrefersReducedMotion from '../hooks/usePrefersReducedMotion.js'
 
 // Screen 3 — focused full-screen player. Mock playback + prev/next.
-export default function ClipPlayer({ clip, index, total, onClose, onNavigate }) {
+export default function ClipPlayer({
+  clip,
+  index,
+  total,
+  onClose,
+  onNavigate,
+  onOpenGraph,
+  onSaveLesson,
+  onSaveError,
+}) {
   const reduced = usePrefersReducedMotion()
   const [playing, setPlaying] = useState(true)
   const [progress, setProgress] = useState(0)
@@ -53,9 +62,23 @@ export default function ClipPlayer({ clip, index, total, onClose, onNavigate }) 
               <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <span className="rounded-full bg-black/35 px-2.5 py-1 font-mono text-[12px] text-white backdrop-blur-sm">
-            {index + 1} / {total}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onOpenGraph}
+              aria-label="Open memory graph"
+              className="grid h-9 w-9 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-black/55"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="6" cy="6" r="2.5" stroke="currentColor" strokeWidth="2" />
+                <circle cx="18" cy="9" r="2.5" stroke="currentColor" strokeWidth="2" />
+                <circle cx="9" cy="18" r="2.5" stroke="currentColor" strokeWidth="2" />
+                <path d="M8 7.5l8 1M8 8l1 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+            </button>
+            <span className="rounded-full bg-black/35 px-2.5 py-1 font-mono text-[12px] text-white backdrop-blur-sm">
+              {index + 1} / {total}
+            </span>
+          </div>
         </div>
 
         {/* center play/pause when paused */}
@@ -71,7 +94,7 @@ export default function ClipPlayer({ clip, index, total, onClose, onNavigate }) 
 
         {/* action rail */}
         <div className="absolute bottom-36 right-3 z-10">
-          <ActionRail clip={clip} />
+          <ActionRail clip={clip} onSaveLesson={onSaveLesson} onSaveError={onSaveError} />
         </div>
 
         {/* bottom meta + controls */}

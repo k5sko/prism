@@ -8,7 +8,16 @@ import usePrefersReducedMotion from '../hooks/usePrefersReducedMotion.js'
 const SLIDE_MS = 8000 // mock "playback" length before auto-advance
 
 // Screen 2 — immersive, swipeable, ranked reel feed.
-export default function Feed({ clips, selected, focusIndex = 0, onOpen, onEdit }) {
+export default function Feed({
+  clips,
+  selected,
+  focusIndex = 0,
+  onOpen,
+  onEdit,
+  onOpenGraph,
+  onSaveLesson,
+  onSaveError,
+}) {
   const reduced = usePrefersReducedMotion()
   const containerRef = useRef(null)
   const slideRefs = useRef([])
@@ -86,15 +95,30 @@ export default function Feed({ clips, selected, focusIndex = 0, onOpen, onEdit }
             <span className="absolute -bottom-1.5 left-1/2 h-0.5 w-5 -translate-x-1/2 rounded-full bg-white" />
           </span>
         </div>
-        <button
-          onClick={onEdit}
-          className="pointer-events-auto flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-3 text-[13px] font-medium text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-            <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-          </svg>
-          Subjects
-        </button>
+        <div className="pointer-events-auto flex items-center gap-2">
+          <button
+            onClick={onOpenGraph}
+            aria-label="Open memory graph"
+            className="flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-3 text-[13px] font-medium text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+              <circle cx="6" cy="6" r="2.5" stroke="currentColor" strokeWidth="2" />
+              <circle cx="18" cy="9" r="2.5" stroke="currentColor" strokeWidth="2" />
+              <circle cx="9" cy="18" r="2.5" stroke="currentColor" strokeWidth="2" />
+              <path d="M8 7.5l8 1M8 8l1 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Memory
+          </button>
+          <button
+            onClick={onEdit}
+            className="flex h-9 items-center gap-1.5 rounded-full bg-white/15 px-3 text-[13px] font-medium text-white backdrop-blur-sm transition-colors duration-150 ease-geist hover:bg-white/25"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Subjects
+          </button>
+        </div>
       </div>
 
       {/* snap feed */}
@@ -130,7 +154,7 @@ export default function Feed({ clips, selected, focusIndex = 0, onOpen, onEdit }
 
               {/* action rail */}
               <div className="absolute bottom-32 right-3 z-10">
-                <ActionRail clip={clip} />
+                <ActionRail clip={clip} onSaveLesson={onSaveLesson} onSaveError={onSaveError} />
               </div>
 
               {/* bottom meta */}
