@@ -17,4 +17,12 @@ VETTED_CHANNELS = [
             "chemistry", "organic chemistry", "physics",
         ],
     },
+    {
+        "name": "Khan Academy",
+        "url": "https://www.youtube.com/@khanacademy",
+        "subjects": [
+            "math", "calculus", "algebra", "geometry", "statistics",
+            "physics", "chemistry", "biology", "economics", "finance", "history",
+        ],
+    },
 ]

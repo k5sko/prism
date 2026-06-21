@@ -21,9 +21,9 @@ import asyncio
 import os
 import uuid
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
@@ -31,7 +31,7 @@ from sqlmodel import select
 
 from .config import get_settings
 from .db import Clip, ClipStatus, Job, init_db, session_scope
-from .finder import find_video
+from .finder import find_videos
 from .llm import LLMClient
 from .pipeline import orchestrator
 from .storage import get_storage, read_json
@@ -92,15 +92,15 @@ def _shape(clip: Clip, channel: str) -> dict:
 
 
 @app.get("/api/clips")
-def list_clips(job_id: Optional[str] = None):
-    """Ready clips ranked by score. Pass job_id to scope to one video's clips
-    (so a topic search shows only that topic, hiding the rest of the library)."""
+def list_clips(job_id: Optional[List[str]] = Query(None)):
+    """Ready clips ranked by score. Pass one or more job_id (repeatable) to scope
+    to a topic's videos (a topic search parses 2 videos, so it passes both)."""
     storage = get_storage()
     cache: dict = {}
     with session_scope() as s:
         stmt = select(Clip).where(Clip.status == ClipStatus.READY)
         if job_id:
-            stmt = stmt.where(Clip.job_id == job_id)
+            stmt = stmt.where(Clip.job_id.in_(job_id))
         clips = s.exec(stmt).all()
         jobs = {j.id: j for j in s.exec(select(Job)).all()}
         clips = sorted(clips, key=lambda c: c.score, reverse=True)
@@ -150,20 +150,24 @@ class SearchIn(BaseModel):
 
 @app.post("/api/search")
 async def search_topic(body: SearchIn):
-    """Topic → find a video on a vetted channel → start a clipping job.
+    """Topic → find the top-N vetted-channel videos → parse them in parallel.
 
-    Returns needs_clarification (vague query) / not_found, or found + job_id.
+    Returns needs_clarification (vague query) / not_found, or
+    {status: "found", query, jobs: [{job_id, video}, ...]}.
     """
     q = (body.query or "").strip()
     if not q:
         raise HTTPException(400, "query is required")
-    result = await asyncio.to_thread(find_video, q, LLMClient())
+    n = get_settings().search_results
+    result = await asyncio.to_thread(find_videos, q, LLMClient(), n)
     if result.get("status") != "found":
         return result
-    video = result["video"]
-    job_id = orchestrator.create_job(video["url"])
-    asyncio.create_task(_run_job(job_id))
-    return {"status": "found", "job_id": job_id, "video": video, "reason": result.get("reason", "")}
+    jobs = []
+    for video in result["videos"]:
+        job_id = orchestrator.create_job(video["url"])
+        asyncio.create_task(_run_job(job_id))  # fan out — they run concurrently
+        jobs.append({"job_id": job_id, "video": video})
+    return {"status": "found", "query": q, "jobs": jobs, "reason": result.get("reason", "")}
 
 
 @app.post("/api/upload")

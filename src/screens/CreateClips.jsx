@@ -22,7 +22,7 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
   const [jobStarted, setJobStarted] = useState(false)
   const [error, setError] = useState(null)
   const [clarify, setClarify] = useState(null) // {message, suggestions}
-  const [found, setFound] = useState(null) // {title, channel}
+  const [foundList, setFoundList] = useState([]) // videos being parsed (topic search)
   const cancelled = useRef(false)
 
   useEffect(() => {
@@ -38,7 +38,7 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
   const reset = () => {
     setError(null)
     setClarify(null)
-    setFound(null)
+    setFoundList([])
     setJobStarted(false)
     setStage(null)
     setBusy(true)
@@ -63,6 +63,40 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
     }
   }
 
+  // Poll several jobs in parallel (a topic search parses 2 videos). The progress
+  // bar shows the least-progressed job; finishes when all are terminal.
+  const STAGE_ORDER = ['searching', 'uploading', 'queued', 'ingesting', 'transcribing', 'segmenting', 'labeling', 'done']
+  const pollJobs = async (jobIds) => {
+    setStage('queued')
+    while (!cancelled.current) {
+      await sleep(2000)
+      let jobs
+      try {
+        jobs = await Promise.all(jobIds.map(getJob))
+      } catch (e) {
+        setError(String(e.message || e))
+        return stop()
+      }
+      const terminal = jobs.filter((j) => j.status === 'done' || j.status === 'error')
+      if (terminal.length === jobs.length) {
+        const okIds = jobs.filter((j) => j.status === 'done').map((j) => j.job_id)
+        if (okIds.length === 0) {
+          setError(jobs.find((j) => j.error)?.error || 'All videos failed.')
+          return stop()
+        }
+        setStage('done')
+        if (!cancelled.current) await onDone(okIds)
+        return
+      }
+      const nonDone = jobs.filter((j) => j.status !== 'done')
+      let laggard = nonDone[0].status
+      for (const j of nonDone) {
+        if (STAGE_ORDER.indexOf(j.status) < STAGE_ORDER.indexOf(laggard)) laggard = j.status
+      }
+      setStage(laggard)
+    }
+  }
+
   const runTopic = async (override) => {
     const q = (override ?? topic).trim()
     if (!q || busy) return
@@ -79,9 +113,10 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
         setError(r.message || 'No matching video found.')
         return stop()
       }
-      setFound(r.video)
+      const jobs = r.jobs || []
+      setFoundList(jobs.map((j) => j.video))
       setJobStarted(true)
-      await pollJob(r.job_id)
+      await pollJobs(jobs.map((j) => j.job_id))
     } catch (e) {
       setError(String(e.message || e))
       stop()
@@ -229,9 +264,12 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
 
         {/* status area */}
         <div className="mt-5 flex-1 overflow-y-auto no-scrollbar">
-          {found && (
+          {foundList.length > 0 && (
             <p className="mb-3 text-[13px] leading-5 text-gray-900">
-              Found <span className="font-medium text-gray-1000">“{found.title}”</span> — {found.channel}
+              Parsing {foundList.length} video{foundList.length === 1 ? '' : 's'}:{' '}
+              <span className="text-gray-1000">
+                {foundList.map((v) => `“${v.title}”`).join(' · ')}
+              </span>
             </p>
           )}
 

@@ -32,15 +32,16 @@ export default function App() {
     loadCount()
   }, [loadCount])
 
-  // Show the feed scoped to one job (a topic) or the whole library (jobId=null).
-  const showFeed = async (jobId) => {
+  // Show the feed scoped to a topic (one or more job ids) or the whole library
+  // (scope = null). A topic search parses 2 videos, so scope is an array.
+  const showFeed = async (scope) => {
     try {
-      const { clips: raw } = await listClips(jobId)
+      const { clips: raw } = await listClips(scope)
       setClips(raw.map(decorateClip))
     } catch {
       setClips([])
     }
-    setScoped(!!jobId)
+    setScoped(Array.isArray(scope) ? scope.length > 0 : !!scope)
     setPlayerIndex(0)
     setView('feed')
   }

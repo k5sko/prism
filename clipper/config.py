@@ -55,6 +55,9 @@ class Settings(BaseSettings):
     llm_effort: str = "low"                 # low | medium | high | xhigh | max
     llm_concurrency: int = 8                # parallel label/segment LLM calls
 
+    # --- topic search -----------------------------------------------------
+    search_results: int = 2                 # videos parsed in parallel per query
+
     # --- segmentation (LLM moment-finding) --------------------------------
     segment_chunk_size: int = 120           # sentences per LLM chunk
     segment_chunk_overlap: int = 15         # overlap so cross-edge moments survive

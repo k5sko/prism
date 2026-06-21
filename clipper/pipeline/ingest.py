@@ -81,10 +81,13 @@ def _download_youtube(url: str, video_path: str, storage: Storage, job_id: str) 
     max_h = settings.yt_max_height
     out_tmpl = storage.path(job_id, "_src.%(ext)s")
     opts = {
+        # Require BOTH audio and video — a bare best[ext=mp4] can be a
+        # video-only adaptive stream, which then breaks audio extraction.
         "format": (
-            f"best[ext=mp4][height<={max_h}]"
+            f"best[ext=mp4][acodec!=none][vcodec!=none][height<={max_h}]"
             f"/bestvideo[height<={max_h}]+bestaudio"
-            f"/best[height<={max_h}]/best"
+            f"/best[acodec!=none][vcodec!=none][height<={max_h}]"
+            f"/best[acodec!=none][vcodec!=none]/best"
         ),
         "merge_output_format": "mp4",
         # The default 'web' client increasingly serves DASH streams that 403 on

@@ -116,6 +116,101 @@ def pick_best(query: str, candidates: List[dict], llm: LLMClient) -> dict:
     return {"best_index": idx, "reason": str(out.get("reason", "")).strip()}
 
 
+_RANK_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "ranking": {"type": "array", "items": {"type": "integer"}},
+        "reason": {"type": "string"},
+    },
+    "required": ["ranking", "reason"],
+}
+
+
+def pick_top(query: str, candidates: List[dict], llm: LLMClient) -> dict:
+    lines = []
+    for i, c in enumerate(candidates):
+        mins = round((c.get("duration") or 0) / 60, 1)
+        lines.append(f"[{i}] {c['title']}  ({mins} min)  — {c['channel']}")
+    prompt = (
+        f"The user wants tutorial videos about: {query!r}\n\n"
+        "Rank the candidates from best to worst match for that exact topic, by "
+        "index (best first). Include only genuinely relevant videos; omit any that "
+        "don't fit. Put the ranked indices in 'ranking'.\n\n" + "\n".join(lines)
+    )
+    out = llm.complete_json(prompt, _RANK_SCHEMA) or {}
+    ranking = []
+    for x in out.get("ranking") or []:
+        try:
+            ranking.append(int(x))
+        except (TypeError, ValueError):
+            continue
+    return {"ranking": ranking, "reason": str(out.get("reason", "")).strip()}
+
+
+def find_videos(
+    query: str,
+    llm: LLMClient,
+    count: int = 2,
+    channels: Optional[List[dict]] = None,
+    search_fn: Callable[[str, dict, int], List[dict]] = search_channel_videos,
+) -> dict:
+    """Find the top ``count`` distinct videos for a topic (for parallel parsing).
+
+    Returns needs_clarification (vague) / not_found, or
+    {status: "found", videos: [...top N...], reason}.
+    """
+    channels = channels if channels is not None else VETTED_CHANNELS
+
+    spec = assess_specificity(query, llm)
+    if not spec["specific"]:
+        return {
+            "status": "needs_clarification",
+            "message": spec["message"] or "That's a bit broad — can you be more specific?",
+            "suggestions": spec["suggestions"],
+        }
+
+    candidates: List[dict] = []
+    for ch in channels:
+        try:
+            candidates.extend(search_fn(spec["search_query"], ch, 8))
+        except Exception:
+            continue
+    if not candidates:
+        return {"status": "not_found", "message": f"No videos found for {query!r}."}
+
+    rank = pick_top(query, candidates, llm)
+    ordered, seen = [], set()
+    for i in rank["ranking"]:
+        if 0 <= i < len(candidates) and i not in seen:
+            seen.add(i)
+            ordered.append(i)
+
+    # Channel-diverse pick: take the best video from each distinct channel first
+    # (so we pull from each vetted channel when possible), then fill remaining
+    # slots by rank.
+    chosen, picked, used_channels = [], set(), set()
+    for i in ordered:
+        ch = candidates[i].get("channel")
+        if ch not in used_channels:
+            chosen.append(candidates[i])
+            picked.add(i)
+            used_channels.add(ch)
+            if len(chosen) >= count:
+                break
+    if len(chosen) < count:
+        for i in ordered:
+            if i not in picked:
+                chosen.append(candidates[i])
+                picked.add(i)
+                if len(chosen) >= count:
+                    break
+
+    if not chosen:
+        return {"status": "not_found", "message": f"Couldn't find matching videos for {query!r}."}
+    return {"status": "found", "videos": chosen, "reason": rank["reason"]}
+
+
 def find_video(
     query: str,
     llm: LLMClient,

@@ -15,7 +15,8 @@ async function asJson(res) {
 }
 
 export async function listClips(jobId) {
-  const q = jobId ? `?job_id=${encodeURIComponent(jobId)}` : ''
+  const ids = Array.isArray(jobId) ? jobId : jobId ? [jobId] : []
+  const q = ids.length ? '?' + ids.map((id) => `job_id=${encodeURIComponent(id)}`).join('&') : ''
   return asJson(await fetch(`/api/clips${q}`))
 }
 
