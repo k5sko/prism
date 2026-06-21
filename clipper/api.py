@@ -53,11 +53,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Clipper API", lifespan=lifespan)
 
-# Allow the Vite dev origin for direct calls; the dev proxy makes this moot but
-# it keeps standalone use working.
+# Allow any origin: the frontend now calls the clipper directly at <host>:8000,
+# including from other devices on the LAN. Fine for local/hackathon use.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

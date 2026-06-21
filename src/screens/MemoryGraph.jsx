@@ -6,6 +6,7 @@ import SubjectTag from '../components/SubjectTag.jsx'
 
 const VBW = 380
 const VBH = 300
+const VBH_FOCUS = 480 // taller canvas + pane when focused, so the subset has room to read
 
 // Subject accent -> graph colors (Geist scales from design.md).
 const ACCENT = {
@@ -19,8 +20,8 @@ const ACCENT = {
 const accentOf = (a) => ACCENT[a] || ACCENT.blue
 const truncate = (s, n) => (s.length > n ? s.slice(0, n - 1) + '…' : s)
 
-// White outline behind label text so edge lines never cut through it.
-const HALO = { paintOrder: 'stroke', stroke: '#fafafa', strokeWidth: 3, strokeLinejoin: 'round' }
+// Dark outline behind label text so edges/nodes never cut through it (dark canvas).
+const HALO = { paintOrder: 'stroke', stroke: '#0a0b10', strokeWidth: 3, strokeLinejoin: 'round' }
 
 // Obsidian-style memory workspace: an interactive mappings graph on top, your
 // Library of saved lessons below. Selecting in one focuses the other.
@@ -93,6 +94,7 @@ export default function MemoryGraph({ onClose, refreshKey = 0, highlightIds = []
     return null
   }, [categorySubject, focusLessonId, nodes, lessons, adj])
   const isFocusMode = !!focusSet
+  const vbh = isFocusMode ? VBH_FOCUS : VBH // active canvas height
 
   // Two independent physics layouts: the full graph, and (when focused) one over
   // just the subset so it spreads across the whole plane and stays draggable.
@@ -106,7 +108,18 @@ export default function MemoryGraph({ onClose, refreshKey = 0, highlightIds = []
     [isFocusMode, edges, focusSet],
   )
   const baseLayout = useForceGraph(nodes, edges, { width: VBW, height: VBH, reduced })
-  const focusLayout = useForceGraph(focusNodes, focusEdges, { width: VBW, height: VBH, reduced })
+  // Focus mode spreads the subset wide from the start — bigger gaps + longer
+  // edges + weaker centering so labels and relationships are readable, and you
+  // can still drag any node to stretch it out further.
+  const focusLayout = useForceGraph(focusNodes, focusEdges, {
+    width: VBW,
+    height: VBH_FOCUS,
+    reduced,
+    repulsion: 9000,
+    minSep: 80,
+    edgeLength: 120,
+    gravity: 0.012,
+  })
   const layout = isFocusMode ? focusLayout : baseLayout
 
   // In normal mode, a clicked node highlights itself + its neighbors in place.
@@ -143,7 +156,7 @@ export default function MemoryGraph({ onClose, refreshKey = 0, highlightIds = []
     const rect = svgRef.current.getBoundingClientRect()
     return {
       x: ((clientX - rect.left) / rect.width) * VBW,
-      y: ((clientY - rect.top) / rect.height) * VBH,
+      y: ((clientY - rect.top) / rect.height) * vbh,
     }
   }
   // Drag works in both modes (each layout supports it). Moved past a small
@@ -241,7 +254,11 @@ export default function MemoryGraph({ onClose, refreshKey = 0, highlightIds = []
       )}
 
       {/* ── graph pane ─────────────────────────────────────────── */}
-      <div className="relative shrink-0 basis-[42%] overflow-hidden border-b border-gray-a-200 bg-bg-200">
+      <div
+        className={`relative shrink-0 overflow-hidden border-b border-gray-a-200 bg-bg-200 transition-[flex-basis] duration-300 ease-geist ${
+          isFocusMode ? 'basis-[64%]' : 'basis-[42%]'
+        }`}
+      >
         {status === 'error' && (
           <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 px-8 text-center">
             <p className="text-[13px] leading-5 text-red-900">Couldn’t load. {error}</p>
@@ -253,7 +270,7 @@ export default function MemoryGraph({ onClose, refreshKey = 0, highlightIds = []
 
         <svg
           ref={svgRef}
-          viewBox={`0 0 ${VBW} ${VBH}`}
+          viewBox={`0 0 ${VBW} ${vbh}`}
           preserveAspectRatio="xMidYMid meet"
           className="h-full w-full touch-none select-none"
           onPointerMove={onMove}
@@ -277,7 +294,7 @@ export default function MemoryGraph({ onClose, refreshKey = 0, highlightIds = []
                   y1={a.y}
                   x2={b.x}
                   y2={b.y}
-                  stroke={lit ? '#525252' : '#d6d6d6'}
+                  stroke={lit ? '#c9cbd6' : '#2b2d36'}
                   strokeWidth={lit ? (e.relation === 'part of' ? 1.6 : 2.4) : e.relation === 'part of' ? 1 : 1.5}
                   strokeDasharray={e.relation === 'part of' ? '3 3' : 'none'}
                 />

@@ -135,7 +135,7 @@ export default function ClipPlayer({
             <button
               onClick={() => onNavigate(1)}
               disabled={index === total - 1}
-              className="h-10 flex-1 rounded-sm bg-white text-[14px] font-medium text-gray-1000 transition-colors duration-150 ease-geist hover:bg-white/90 disabled:opacity-40"
+              className="h-10 flex-1 rounded-sm bg-white text-[14px] font-medium text-[#0a0b10] transition-colors duration-150 ease-geist hover:bg-white/90 disabled:opacity-40"
             >
               Next ›
             </button>

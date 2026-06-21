@@ -30,9 +30,10 @@ function memoryApi() {
 export default defineConfig({
   plugins: [react(), memoryApi()],
   server: {
-    // Clipper FastAPI backend. /api/memory is served in-process (above); all
-    // other /api/* requests are proxied here. Run it with:
-    //   .venv/bin/uvicorn clipper.api:app --port 8000
+    host: '0.0.0.0', // bind IPv4 all-interfaces (host:true picks IPv6-only; LAN IP is IPv4)
+    allowedHosts: true, // accept any Host header (e.g. the LAN IP from a phone)
+    // Clipper FastAPI backend. /api/memory is served in-process (above); clip
+    // video (/api/jobs/{id}/video) is proxied here so it stays same-origin.
     proxy: {
       '/api': 'http://localhost:8000',
     },

@@ -6,7 +6,8 @@ const BASE = '/api/memory'
 
 async function req(path, opts = {}) {
   const res = await fetch(BASE + path, {
-    headers: { 'Content-Type': 'application/json' },
+    // ngrok-skip-browser-warning: dodge the free-tier interstitial over a tunnel
+    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
     ...opts,
   })
   if (!res.ok) {

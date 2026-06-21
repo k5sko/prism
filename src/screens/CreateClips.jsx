@@ -301,7 +301,7 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
                           placeholder={i === 0 ? 'A class, e.g. the chain rule' : 'Another class…'}
                           disabled={checking}
                           className={`h-12 flex-1 rounded-sm border bg-bg-100 px-3 text-[16px] leading-5 text-gray-1000 shadow-raised placeholder:text-gray-700 disabled:bg-gray-100 ${
-                            t.state ? 'border-amber-400' : 'border-gray-a-400'
+                            t.state ? 'border-amber-700/50' : 'border-gray-a-400'
                           }`}
                         />
                         {topics.length > 1 && (
@@ -319,15 +319,15 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
                       </div>
 
                       {t.clarify && (
-                        <div className="mt-1.5 rounded-md border border-amber-400 bg-amber-100 p-3">
-                          <p className="text-[13px] leading-5 text-amber-900">{t.clarify.message}</p>
+                        <div className="mt-1.5 rounded-md border border-amber-700/25 bg-amber-700/10 p-3">
+                          <p className="text-[13px] leading-5 text-[#d8bd84]">{t.clarify.message}</p>
                           {t.clarify.suggestions?.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1.5">
                               {t.clarify.suggestions.map((s) => (
                                 <button
                                   key={s}
                                   onClick={() => applySuggestion(t.id, s)}
-                                  className="rounded-full border border-amber-600/40 bg-bg-100 px-2.5 py-1 text-[12px] text-amber-900 transition-colors duration-150 ease-geist hover:bg-amber-100"
+                                  className="rounded-full border border-amber-700/25 bg-bg-100 px-2.5 py-1 text-[12px] text-[#d8bd84] transition-colors duration-150 ease-geist hover:bg-amber-700/10"
                                 >
                                   {s}
                                 </button>
@@ -441,7 +441,7 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
                   (classCount > 1 ? ` · ${classCount} classes` : '')}
             </p>
 
-            {note && <p className="mb-3 text-[13px] leading-5 text-amber-700">{note}</p>}
+            {note && <p className="mb-3 text-[13px] leading-5 text-[#cda85f]">{note}</p>}
 
             {jobs.length === 0 && !error && (
               <div className="flex items-center gap-3 rounded-md border border-gray-a-200 bg-bg-100 p-4 shadow-raised">

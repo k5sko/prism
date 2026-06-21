@@ -13,7 +13,11 @@ const L = 74 // ideal edge length
 const MARGIN = 26
 const MINSEP = 42 // hard minimum gap between any two nodes (no overlaps)
 
-export default function useForceGraph(nodes, edges, { width, height, reduced }) {
+export default function useForceGraph(
+  nodes,
+  edges,
+  { width, height, reduced, repulsion = KREP, minSep = MINSEP, edgeLength = L, gravity = KGRAV },
+) {
   const [, setTick] = useState(0)
   const pos = useRef(new Map())
   const vel = useRef(new Map())
@@ -33,8 +37,8 @@ export default function useForceGraph(nodes, edges, { width, height, reduced }) 
       const base = anchor || { x: cx, y: cy }
       const a = i * 2.39996 // golden-angle scatter
       pos.current.set(n.id, {
-        x: base.x + Math.cos(a) * 64 + (Math.random() - 0.5) * 24,
-        y: base.y + Math.sin(a) * 64 + (Math.random() - 0.5) * 24,
+        x: base.x + Math.cos(a) * (edgeLength * 0.95) + (Math.random() - 0.5) * 24,
+        y: base.y + Math.sin(a) * (edgeLength * 0.95) + (Math.random() - 0.5) * 24,
       })
       vel.current.set(n.id, { x: 0, y: 0 })
     })
@@ -65,7 +69,7 @@ export default function useForceGraph(nodes, edges, { width, height, reduced }) 
         let dy = a.y - b.y
         let d2 = dx * dx + dy * dy || 0.01
         const d = Math.sqrt(d2)
-        const f = KREP / d2
+        const f = repulsion / d2
         const fx = (dx / d) * f
         const fy = (dy / d) * f
         const da = disp.get(ns[i].id)
@@ -84,7 +88,7 @@ export default function useForceGraph(nodes, edges, { width, height, reduced }) 
       let dx = b.x - a.x
       let dy = b.y - a.y
       const d = Math.sqrt(dx * dx + dy * dy) || 0.01
-      const f = (d - L) * KSPR
+      const f = (d - edgeLength) * KSPR
       const fx = (dx / d) * f
       const fy = (dy / d) * f
       const da = disp.get(e.from)
@@ -103,8 +107,8 @@ export default function useForceGraph(nodes, edges, { width, height, reduced }) 
       const p = pos.current.get(n.id)
       const dd = disp.get(n.id)
       if (!p || !dd) continue
-      dd.x += (cx - p.x) * KGRAV
-      dd.y += (cy - p.y) * KGRAV
+      dd.x += (cx - p.x) * gravity
+      dd.y += (cy - p.y) * gravity
       if (pinned.current.has(n.id)) continue
       const v = vel.current.get(n.id)
       v.x = (v.x + dd.x) * DAMP
@@ -123,8 +127,8 @@ export default function useForceGraph(nodes, edges, { width, height, reduced }) 
         let dx = b.x - a.x
         let dy = b.y - a.y
         let d = Math.sqrt(dx * dx + dy * dy) || 0.01
-        if (d >= MINSEP) continue
-        const push = (MINSEP - d) / 2
+        if (d >= minSep) continue
+        const push = (minSep - d) / 2
         const nx = dx / d
         const ny = dy / d
         const ai = pinned.current.has(ns[i].id)

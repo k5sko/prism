@@ -1,51 +1,57 @@
 /** @type {import('tailwindcss').Config} */
-// Direction C — "Premium" (Apple/Notion): quiet luxury on a light base. Geist
-// neutral ramp kept for continuity; type is Space Grotesk (display) + Inter
-// (body), the loud Geist blue is replaced by a single muted-indigo `accent`,
-// and surfaces lean on hairlines + soft radii + subtle glass over heavy shadow.
+// Direction C — "Premium", now DARK: quiet luxury on a deep near-black base.
+// The Geist-style semantic ramp is re-themed for dark (gray-1000 = brightest ink,
+// bg-100 = lifted surface, gray-a = white-alpha hairlines), so every component
+// flips coherently with no markup changes. Type stays Space Grotesk (display) +
+// Inter (body); a single muted-indigo `accent` carries focus + quiet highlights;
+// definition comes from white hairlines + surface tints over heavier shadow.
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
       colors: {
-        primary: '#171717',
-        secondary: '#4d4d4d',
-        tertiary: '#5b5bd6',
-        neutral: '#f2f2f2',
-        'bg-100': '#ffffff',
-        'bg-200': '#fafafa',
-        // muted indigo — used sparingly (focus, active marks, quiet highlights)
+        primary: '#f5f6fa',
+        secondary: '#c9cbd6',
+        tertiary: '#7d7df2',
+        neutral: '#191a21',
+        // base surfaces: page (200, deepest) vs frame/cards (100, lifted)
+        'bg-100': '#15161d',
+        'bg-200': '#0a0b10',
+        // muted indigo — brightened for dark; used sparingly (focus, marks, highlights)
         accent: {
-          100: '#eeeffb',
-          200: '#e0e2f7',
-          400: '#bcbff0',
-          500: '#5b5bd6',
-          600: '#4f4fc4',
-          700: '#4040a6',
+          100: '#181a2e',
+          200: '#23264a',
+          400: '#4a4cc0',
+          500: '#7d7df2',
+          600: '#9494f6',
+          700: '#b4b4f9',
         },
+        // inverted neutral ramp: 1000 = brightest ink (text + high-contrast fills),
+        // descending to dark subtle fills (100).
         gray: {
-          100: '#f2f2f2',
-          200: '#ebebeb',
-          300: '#e6e6e6',
-          400: '#eaeaea',
-          500: '#c9c9c9',
-          600: '#a8a8a8',
-          700: '#8f8f8f',
-          800: '#7d7d7d',
-          900: '#4d4d4d',
-          1000: '#171717',
+          100: '#191a21',
+          200: '#21222b',
+          300: '#2b2d36',
+          400: '#393b46',
+          500: '#50525d',
+          600: '#6b6d79',
+          700: '#8b8d99',
+          800: '#abadb9',
+          900: '#c9cbd6',
+          1000: '#f5f6fa',
         },
+        // white-alpha hairlines / hovers / overlays (replaces the light theme's black alphas)
         'gray-a': {
-          100: '#0000000d',
-          200: '#00000015',
-          300: '#0000001a',
-          400: '#00000014',
-          500: '#00000036',
-          600: '#0000003d',
-          700: '#00000070',
-          800: '#00000082',
-          900: '#000000b3',
-          1000: '#000000e8',
+          100: '#ffffff0a',
+          200: '#ffffff12',
+          300: '#ffffff1f',
+          400: '#ffffff14',
+          500: '#ffffff2b',
+          600: '#ffffff3d',
+          700: '#ffffff59',
+          800: '#ffffff80',
+          900: '#ffffffb5',
+          1000: '#ffffffeb',
         },
         blue: {
           100: '#f0f7ff',
@@ -97,7 +103,6 @@ export default {
         mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       borderRadius: {
-        // softer, more "expensive" corners than Geist's defaults
         sm: '8px',
         md: '14px',
         lg: '20px',
@@ -105,15 +110,16 @@ export default {
         full: '9999px',
       },
       boxShadow: {
-        // quieter, more diffuse than Geist — premium leans on hairlines, not shadow
-        raised: '0 1px 2px rgba(16,18,38,0.04)',
+        // deeper, blacker shadows so elevation reads on a dark base
+        raised: '0 1px 2px rgba(0, 0, 0, 0.4)',
         popover:
-          '0 1px 1px rgba(16,18,38,0.02), 0 6px 12px -6px rgba(16,18,38,0.06), 0 18px 28px -12px rgba(16,18,38,0.08)',
+          '0 1px 1px rgba(0,0,0,0.5), 0 8px 16px -6px rgba(0,0,0,0.55), 0 22px 36px -14px rgba(0,0,0,0.65)',
         modal:
-          '0 1px 1px rgba(16,18,38,0.02), 0 10px 20px -8px rgba(16,18,38,0.07), 0 32px 48px -16px rgba(16,18,38,0.12)',
+          '0 1px 1px rgba(0,0,0,0.5), 0 14px 28px -10px rgba(0,0,0,0.6), 0 40px 64px -20px rgba(0,0,0,0.75)',
       },
       transitionTimingFunction: {
-        geist: 'cubic-bezier(0.175, 0.885, 0.32, 1.1)',
+        // smoother, premium ease (no bounce) for all `ease-geist` transitions
+        geist: 'cubic-bezier(0.32, 0.72, 0, 1)',
       },
     },
   },

@@ -4,11 +4,13 @@
 
 const ACCENTS = ['blue', 'green', 'amber', 'purple']
 
+// Muted, deep jewel tones (not neon): each clip gets a quiet colored backdrop
+// that differentiates subjects without striking the eye on the dark theme.
 const GRADIENTS = {
-  blue: ['#48aeff', '#0059ec'],
-  green: ['#4ce15e', '#107d32'],
-  amber: ['#ffc543', '#ff9300'],
-  purple: ['#c979ff', '#7d00cc'],
+  blue: ['#2f4a78', '#1b2a47'],
+  green: ['#2c5446', '#18302a'],
+  amber: ['#6d5530', '#3f301c'],
+  purple: ['#473463', '#2a1f40'],
 }
 
 function hashStr(s) {
