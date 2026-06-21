@@ -115,6 +115,24 @@ def test_drop_when_too_short():
     assert clips == []
 
 
+def test_labels_pass_through_and_subsplit_inherits():
+    _, sentences, words, duration = _ctx()
+    moments = [{
+        "start_sentence": 0, "end_sentence": 4, "reason": "whole talk",
+        "title": "Focus", "hook": "Stop scrolling.", "summary": "On focus.",
+        "tags": ["focus"], "score": 0.8,
+    }]
+    # force a sub-split so the one moment yields several clips
+    clips = B.build_clips(moments, sentences, words, duration, _settings(target_max_sec=4.0))
+    assert len(clips) >= 2
+    # every sub-clip carries the parent moment's labels verbatim
+    for c in clips:
+        assert c["title"] == "Focus"
+        assert c["hook"] == "Stop scrolling."
+        assert c["tags"] == ["focus"]
+        assert c["score"] == 0.8
+
+
 def test_dedup_keeps_stronger_reason():
     _, sentences, words, duration = _ctx()
     moments = [

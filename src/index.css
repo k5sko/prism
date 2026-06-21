@@ -17,14 +17,38 @@
     margin: 0;
     background: #fafafa;
     color: #171717;
-    font-family: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: 'cv11', 'ss01';
   }
 
-  /* Geist two-layer focus ring */
+  /* two-layer focus ring, now in the muted accent rather than the loud blue */
   :focus-visible {
     outline: none;
-    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #006bff;
+    box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #5b5bd6;
+  }
+}
+
+@layer components {
+  /* Premium display type — Space Grotesk with tight optical tracking. */
+  .font-head {
+    font-family: 'Space Grotesk', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+  }
+
+  /* Subtle glass surface — translucent + blur + hairline, for quiet-luxury cards
+     and overlays. Use over a busy/median background; falls back to near-white. */
+  .glass {
+    background: rgba(255, 255, 255, 0.72);
+    -webkit-backdrop-filter: blur(14px) saturate(1.5);
+    backdrop-filter: blur(14px) saturate(1.5);
+    border: 1px solid rgba(16, 18, 38, 0.06);
+  }
+  .glass-dark {
+    background: rgba(12, 14, 24, 0.42);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    backdrop-filter: blur(14px) saturate(1.4);
   }
 }
 

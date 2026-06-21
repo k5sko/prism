@@ -1,5 +1,8 @@
 /** @type {import('tailwindcss').Config} */
-// Geist (Vercel) Light theme tokens — see design.md
+// Direction C — "Premium" (Apple/Notion): quiet luxury on a light base. Geist
+// neutral ramp kept for continuity; type is Space Grotesk (display) + Inter
+// (body), the loud Geist blue is replaced by a single muted-indigo `accent`,
+// and surfaces lean on hairlines + soft radii + subtle glass over heavy shadow.
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
@@ -7,10 +10,19 @@ export default {
       colors: {
         primary: '#171717',
         secondary: '#4d4d4d',
-        tertiary: '#006bff',
+        tertiary: '#5b5bd6',
         neutral: '#f2f2f2',
         'bg-100': '#ffffff',
         'bg-200': '#fafafa',
+        // muted indigo — used sparingly (focus, active marks, quiet highlights)
+        accent: {
+          100: '#eeeffb',
+          200: '#e0e2f7',
+          400: '#bcbff0',
+          500: '#5b5bd6',
+          600: '#4f4fc4',
+          700: '#4040a6',
+        },
         gray: {
           100: '#f2f2f2',
           200: '#ebebeb',
@@ -80,21 +92,25 @@ export default {
         },
       },
       fontFamily: {
-        sans: ['Geist', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
-        mono: ['Geist Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'sans-serif'],
+        head: ['Space Grotesk', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'ui-monospace', 'SFMono-Regular', 'monospace'],
       },
       borderRadius: {
-        sm: '6px',
-        md: '12px',
-        lg: '16px',
+        // softer, more "expensive" corners than Geist's defaults
+        sm: '8px',
+        md: '14px',
+        lg: '20px',
+        xl: '28px',
         full: '9999px',
       },
       boxShadow: {
-        raised: '0 2px 2px rgba(0, 0, 0, 0.04)',
+        // quieter, more diffuse than Geist — premium leans on hairlines, not shadow
+        raised: '0 1px 2px rgba(16,18,38,0.04)',
         popover:
-          '0 1px 1px rgba(0,0,0,0.02), 0 4px 8px -4px rgba(0,0,0,0.04), 0 16px 24px -8px rgba(0,0,0,0.06)',
+          '0 1px 1px rgba(16,18,38,0.02), 0 6px 12px -6px rgba(16,18,38,0.06), 0 18px 28px -12px rgba(16,18,38,0.08)',
         modal:
-          '0 1px 1px rgba(0,0,0,0.02), 0 8px 16px -4px rgba(0,0,0,0.04), 0 24px 32px -8px rgba(0,0,0,0.06)',
+          '0 1px 1px rgba(16,18,38,0.02), 0 10px 20px -8px rgba(16,18,38,0.07), 0 32px 48px -16px rgba(16,18,38,0.12)',
       },
       transitionTimingFunction: {
         geist: 'cubic-bezier(0.175, 0.885, 0.32, 1.1)',

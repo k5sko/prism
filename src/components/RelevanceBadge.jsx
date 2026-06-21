@@ -5,7 +5,7 @@ export default function RelevanceBadge({ score, className = '' }) {
   return (
     <span
       title="Placeholder relevance — ranking model not built yet"
-      className={`inline-flex items-center gap-1 rounded-full border border-blue-400 bg-blue-100 px-2 py-0.5 font-mono text-[12px] font-medium leading-4 text-blue-900 ${className}`}
+      className={`inline-flex items-center gap-1 rounded-full border border-accent-400 bg-accent-100 px-2 py-0.5 font-mono text-[12px] font-medium leading-4 text-accent-700 ${className}`}
     >
       <svg width="11" height="11" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path

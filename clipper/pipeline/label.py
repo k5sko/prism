@@ -1,72 +1,38 @@
-"""Phase 7 — Label: per-clip {title, hook, summary, tags[], score} via Claude.
+"""Phase 7 — Persist: write the labeled clips to the DB + clips.json.
 
-Writes each clip to the DB with status="ready" and writes clips.json as the
-stage's final artifact. `score` (0–1) reflects standalone clarity + hook
-strength; downstream stages (compression/filter, recommendation, RAG) read
-these records straight from the DB.
+Labels ({title, hook, summary, tags[], score}) are produced upstream in the
+segment pass and carried verbatim through boundaries, so this stage makes no LLM
+calls — it normalizes the carried fields, writes one DB row per clip
+(status="ready"), and emits clips.json as the stage's final artifact. `score`
+(0–1) reflects standalone clarity + hook strength; downstream stages
+(compression/filter, recommendation, RAG) read these records straight from the
+DB.
 """
 
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
 
-from ..config import get_settings
 from ..db import Clip, ClipStatus, init_db, session_scope
-from ..llm import LLMClient
 from ..storage import Storage, read_json, write_json
 
 BOUNDARIES = "boundaries.json"
 VIDEO = "video.mp4"
 ARTIFACT = "clips.json"
 
-LABEL_SCHEMA = {
-    "type": "object",
-    "additionalProperties": False,
-    "properties": {
-        "title": {"type": "string"},
-        "hook": {"type": "string"},
-        "summary": {"type": "string"},
-        "tags": {"type": "array", "items": {"type": "string"}},
-        "score": {"type": "number"},
-    },
-    "required": ["title", "hook", "summary", "tags", "score"],
-}
 
-_SYSTEM = (
-    "You write metadata for short, self-contained video clips. Titles are concise "
-    "and specific (no clickbait), hooks are a single scroll-stopping line, "
-    "summaries are one or two sentences. The score (0–1) rates how well the clip "
-    "stands alone and how strong its hook is."
-)
-
-
-def _prompt(text: str) -> str:
-    return (
-        "Here is the transcript of one clip. Produce its metadata.\n\n"
-        "- title: a specific, concise title\n"
-        "- hook: one line that makes someone stop scrolling\n"
-        "- summary: 1–2 sentences on what the clip covers\n"
-        "- tags: 3–6 lowercase topical tags\n"
-        "- score: 0–1, standalone clarity + hook strength\n\n"
-        f"Transcript:\n{text}"
-    )
-
-
-def label_clip(text: str, llm: LLMClient) -> dict:
-    out = llm.complete_json(_prompt(text), LABEL_SCHEMA, system=_SYSTEM) or {}
-    score = out.get("score", 0.0)
+def _normalize_labels(clip: dict) -> dict:
+    """Final, defensive coercion of the labels carried from the segment pass."""
     try:
-        score = max(0.0, min(1.0, float(score)))
+        score = max(0.0, min(1.0, float(clip.get("score", 0.0))))
     except (TypeError, ValueError):
         score = 0.0
-    tags = [str(t) for t in (out.get("tags") or [])]
     return {
-        "title": str(out.get("title", "")).strip(),
-        "hook": str(out.get("hook", "")).strip(),
-        "summary": str(out.get("summary", "")).strip(),
-        "tags": tags,
+        "title": str(clip.get("title") or "").strip(),
+        "hook": str(clip.get("hook") or "").strip(),
+        "summary": str(clip.get("summary") or "").strip(),
+        "tags": [str(t) for t in (clip.get("tags") or [])],
         "score": round(score, 3),
     }
 
@@ -74,8 +40,8 @@ def label_clip(text: str, llm: LLMClient) -> dict:
 def run(
     job_id: str,
     storage: Storage,
-    llm: Optional[LLMClient] = None,
-    *,
+    llm=None,  # accepted for orchestrator signature compatibility; unused — labels
+    *,         # now come from the segment pass, not a per-clip LLM call.
     force: bool = False,
 ) -> List[dict]:
     if storage.exists(job_id, ARTIFACT) and not force:
@@ -86,23 +52,12 @@ def run(
         )
 
     clips = read_json(storage, job_id, BOUNDARIES)
-    llm = llm or LLMClient()
     # Virtual clips: every clip references the one source video + start/end.
     source_video = storage.path(job_id, VIDEO)
 
-    # Label clips concurrently — this is the slowest LLM stage (one call/clip).
-    metas: List[Optional[dict]] = [None] * len(clips)
-    if clips:
-        workers = min(max(1, get_settings().llm_concurrency), len(clips))
-        with ThreadPoolExecutor(max_workers=workers) as ex:
-            for i, meta in ex.map(
-                lambda p: (p[0], label_clip(p[1].get("text", ""), llm)),
-                list(enumerate(clips)),
-            ):
-                metas[i] = meta
-
     records: List[dict] = []
-    for c, meta in zip(clips, metas):
+    for c in clips:
+        meta = _normalize_labels(c)
         records.append(
             {
                 # globally-unique id (the on-disk filename stays the per-job

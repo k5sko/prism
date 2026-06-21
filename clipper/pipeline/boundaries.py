@@ -15,6 +15,11 @@ mid-word or mid-sentence:
 5. De-dup: drop a clip overlapping a stronger one (by reason signal) > 50%.
 6. Validate: assert no boundary falls strictly inside any word span; a clip that
    can't satisfy this is dropped, never silently emitted.
+
+Labels (title/hook/summary/tags/score) computed by the segment pass ride along
+on each moment; we copy them verbatim onto every clip we emit so label.py can
+persist them without re-reading the transcript. A sub-split moment's parts
+inherit its labels.
 """
 
 from __future__ import annotations
@@ -30,6 +35,10 @@ MOMENTS = "moments.json"
 ARTIFACT = "boundaries.json"
 
 _EPS = 1e-6
+
+# Per-moment metadata produced upstream by the segment pass, carried through to
+# the clips unchanged (boundaries owns timing, not labels).
+_LABEL_KEYS = ("title", "hook", "summary", "tags", "score")
 
 
 def word_list(transcript: dict) -> List[dict]:
@@ -140,6 +149,7 @@ def build_clips(
         if ss is None or es is None or not (0 <= ss <= es < n):
             continue
         reason = str(m.get("reason", ""))
+        labels = {k: m.get(k) for k in _LABEL_KEYS}
 
         raw_span = sentences[es]["end"] - sentences[ss]["start"]
         ranges = (
@@ -167,6 +177,7 @@ def build_clips(
                     "end_sentence": b,
                     "reason": reason,
                     "text": _text(sentences, a, b),
+                    **labels,
                 }
             )
 

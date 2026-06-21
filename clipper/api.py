@@ -31,15 +31,16 @@ from sqlmodel import select
 
 from .config import get_settings
 from .db import Clip, ClipStatus, Job, init_db, session_scope
-from .finder import find_video
+from .finder import assess_specificity, find_video
 from .llm import LLMClient
 from .pipeline import orchestrator
 from .questionnaire import generate_questions, plan_videos
 from .storage import get_storage, read_json
 
 # Cap how many videos clip concurrently. Virtual clips removed the ffmpeg render
-# bottleneck, so the real limit is LLM API rate (each job fans out up to
-# llm_concurrency label calls). 3 keeps peak Anthropic concurrency reasonable.
+# bottleneck, so the real limit is LLM API rate (each job's segment pass makes a
+# handful of chunk calls that now also emit labels). 3 keeps peak Anthropic
+# concurrency reasonable.
 MAX_CONCURRENT_JOBS = 3
 _job_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 
@@ -198,9 +199,27 @@ async def questionnaire(body: QuestionnaireIn):
     return await asyncio.to_thread(generate_questions, topic, LLMClient())
 
 
+@app.post("/api/check-topic")
+async def check_topic(body: QuestionnaireIn):
+    """Lightweight vagueness gate for one class box: is this topic specific
+    enough to aim a search at? (specificity only — no quiz is generated). The
+    multi-class landing page calls this per box and, when specific=false, shows
+    the suggestions inline so the learner can sharpen it."""
+    topic = (body.topic or "").strip()
+    if not topic:
+        raise HTTPException(400, "topic is required")
+    spec = await asyncio.to_thread(assess_specificity, topic, LLMClient())
+    return {
+        "specific": bool(spec.get("specific")),
+        "message": spec.get("message") or "",
+        "suggestions": spec.get("suggestions") or [],
+    }
+
+
 class LearnIn(BaseModel):
     topic: str
     answers: dict = {}
+    max_videos: int = 3
 
 
 @app.post("/api/learn")
@@ -213,7 +232,10 @@ async def learn(body: LearnIn):
         raise HTTPException(400, "topic is required")
     llm = LLMClient()
 
-    plan = await asyncio.to_thread(plan_videos, topic, body.answers, llm)
+    # Per-class video budget: the multi-class flow asks for fewer videos each so
+    # the total across classes stays sane behind the job-concurrency cap.
+    max_videos = max(1, min(int(body.max_videos or 3), 5))
+    plan = await asyncio.to_thread(plan_videos, topic, body.answers, llm, max_videos)
     queries = plan["queries"]
 
     # Find a video per query, concurrently.

@@ -176,7 +176,7 @@ export default function Feed({
                 </div>
                 <button
                   onClick={() => onOpen(i)}
-                  className="block text-left text-[20px] font-semibold leading-7 tracking-[-0.4px] text-white"
+                  className="font-head block text-left text-[20px] font-semibold leading-7 tracking-[-0.4px] text-white"
                 >
                   {clip.title}
                 </button>

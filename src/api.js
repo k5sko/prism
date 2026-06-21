@@ -32,13 +32,27 @@ export async function getQuestionnaire(topic) {
   )
 }
 
-// Questionnaire answers -> a multi-video learning plan + started clipping jobs.
-export async function startLearning(topic, answers) {
+// One class box -> { specific, message, suggestions } (vagueness gate only).
+export async function checkTopic(topic) {
+  return asJson(
+    await fetch('/api/check-topic', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ topic }),
+    }),
+  )
+}
+
+// A class topic -> a multi-video learning plan + started clipping jobs.
+// `maxVideos` lets the multi-class flow request fewer videos per class.
+export async function startLearning(topic, answers = {}, maxVideos) {
+  const payload = { topic, answers }
+  if (maxVideos != null) payload.max_videos = maxVideos
   return asJson(
     await fetch('/api/learn', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ topic, answers }),
+      body: JSON.stringify(payload),
     }),
   )
 }

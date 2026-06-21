@@ -53,7 +53,7 @@ class Settings(BaseSettings):
     llm_model: str = "claude-sonnet-4-6"
     llm_max_tokens: int = 8000
     llm_effort: str = "low"                 # low | medium | high | xhigh | max
-    llm_concurrency: int = 8                # parallel label/segment LLM calls
+    llm_concurrency: int = 8                # reserved: cap for any future parallel LLM fan-out
 
     # --- segmentation (LLM moment-finding) --------------------------------
     segment_chunk_size: int = 120           # sentences per LLM chunk

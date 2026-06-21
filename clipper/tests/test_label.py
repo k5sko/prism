@@ -1,23 +1,17 @@
-"""Phase 7 — Label: metadata records + DB rows via an injected fake LLM."""
+"""Phase 7 — Persist: labels now ride in from the segment pass via boundaries.json,
+so this stage makes no LLM calls — it just normalizes + writes records and DB rows."""
 
 from __future__ import annotations
 
-import threading
+
+class ExplodingLLM:
+    """Any LLM use in this stage is a regression — calling it raises."""
+
+    def complete_json(self, *a, **k):  # pragma: no cover - must never run
+        raise AssertionError("label stage must not call the LLM")
 
 
-class FakeLLM:
-    def __init__(self, payload):
-        self.payload = payload
-        self.calls = 0
-        self._lock = threading.Lock()  # labeling runs calls concurrently
-
-    def complete_json(self, prompt, schema, *, system=None, max_tokens=None):
-        with self._lock:
-            self.calls += 1
-        return dict(self.payload)
-
-
-def test_label_writes_records_and_db(tmp_path, monkeypatch):
+def test_label_persists_carried_labels(tmp_path, monkeypatch):
     monkeypatch.setenv("CLIPPER_STORAGE_ROOT", str(tmp_path / "store"))
     monkeypatch.setenv("CLIPPER_DATABASE_URL", f"sqlite:///{tmp_path / 'c.db'}")
     import clipper.config as config
@@ -31,24 +25,21 @@ def test_label_writes_records_and_db(tmp_path, monkeypatch):
 
     st = LocalStorage()
     st.job_dir("j")
+    # boundaries.json now carries the labels the segment pass produced.
     boundaries = [
         {"id": "c_01", "start": 1.0, "end": 20.0, "duration": 19.0,
-         "start_sentence": 0, "end_sentence": 3, "text": "a focus clip", "reason": "r"},
+         "start_sentence": 0, "end_sentence": 3, "text": "a focus clip", "reason": "r",
+         "title": "Train Your Focus", "hook": "Most people train the wrong thing.",
+         "summary": "Focus is a trainable skill.", "tags": ["focus", "habits"],
+         "score": 1.4},  # out of range → clamped to 1.0
         {"id": "c_02", "start": 25.0, "end": 50.0, "duration": 25.0,
-         "start_sentence": 4, "end_sentence": 7, "text": "another clip", "reason": "r"},
+         "start_sentence": 4, "end_sentence": 7, "text": "another clip", "reason": "r",
+         "title": "Second", "hook": "h", "summary": "s", "tags": [], "score": 0.5},
     ]
     write_json(st, boundaries, "j", "boundaries.json")
 
-    fake = FakeLLM({
-        "title": "Train Your Focus",
-        "hook": "Most people train the wrong thing.",
-        "summary": "Focus is a trainable skill.",
-        "tags": ["focus", "habits"],
-        "score": 1.4,   # out of range → clamped to 1.0
-    })
-    records = label.run("j", st, llm=fake)
+    records = label.run("j", st, llm=ExplodingLLM())
 
-    assert fake.calls == 2
     assert st.exists("j", "clips.json")
     assert records[0]["id"] == "j_c_01"                 # globally-unique id
     assert records[0]["title"] == "Train Your Focus"
@@ -66,6 +57,32 @@ def test_label_writes_records_and_db(tmp_path, monkeypatch):
         assert c1.score == 1.0
         assert s.get(db.Clip, "j_c_02") is not None
 
-    # resumable: cached artifact, no further LLM calls
-    label.run("j", st, llm=fake)
-    assert fake.calls == 2
+    # resumable: cached artifact, no recompute (and still no LLM)
+    label.run("j", st, llm=ExplodingLLM())
+
+
+def test_label_tolerates_missing_label_fields(tmp_path, monkeypatch):
+    """A boundaries record with no carried labels (sparse/old artifact) still
+    persists with safe defaults rather than KeyError-ing."""
+    monkeypatch.setenv("CLIPPER_STORAGE_ROOT", str(tmp_path / "store"))
+    monkeypatch.setenv("CLIPPER_DATABASE_URL", f"sqlite:///{tmp_path / 'c.db'}")
+    import clipper.config as config
+    import clipper.db as db
+
+    config.get_settings.cache_clear()
+    db._engine = None
+
+    from clipper.pipeline import label
+    from clipper.storage import LocalStorage, write_json
+
+    st = LocalStorage()
+    st.job_dir("j")
+    write_json(st, [
+        {"id": "c_01", "start": 0.0, "end": 10.0, "duration": 10.0,
+         "start_sentence": 0, "end_sentence": 0, "text": "t", "reason": "r"},
+    ], "j", "boundaries.json")
+
+    records = label.run("j", st)
+    assert records[0]["title"] == ""
+    assert records[0]["tags"] == []
+    assert records[0]["score"] == 0.0

@@ -80,7 +80,7 @@ export default function ActionRail({ clip, onSaveLesson, onSaveError }) {
         label="Commit to memory"
         count={saving ? 'Saving…' : saved ? 'Saved ✓' : 'Memory'}
         active={saved}
-        activeColor="text-blue-700"
+        activeColor="text-accent-500"
         onClick={onSave}
       >
         {saving ? (

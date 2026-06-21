@@ -22,21 +22,19 @@ pytestmark = pytest.mark.skipif(
 
 
 class FakeLLM:
-    """One moment spanning everything, then canned label metadata — selected by
-    which schema the stage passes in."""
+    """One moment spanning everything, with its label metadata emitted in the
+    same segment call (labeling is now fused into segmentation — the label stage
+    makes no LLM call)."""
 
     def complete_json(self, prompt, schema, *, system=None, max_tokens=None):
-        if "moments" in schema.get("properties", {}):
-            return {"moments": [
-                {"start_sentence": 0, "end_sentence": 999, "reason": "one complete idea"}
-            ]}
-        return {
+        return {"moments": [{
+            "start_sentence": 0, "end_sentence": 999, "reason": "one complete idea",
             "title": "The Quick Brown Fox",
             "hook": "A sentence that uses every letter.",
             "summary": "A demo clip of synthesized speech.",
             "tags": ["demo", "test"],
             "score": 0.7,
-        }
+        }]}
 
 
 def test_full_pipeline_upload(tmp_path, monkeypatch):

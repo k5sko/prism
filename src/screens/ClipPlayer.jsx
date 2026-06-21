@@ -108,7 +108,7 @@ export default function ClipPlayer({
             <SubjectTag accent={clip.accent}>{clip.subjectTag}</SubjectTag>
             <RelevanceBadge score={clip.relevanceScore} />
           </div>
-          <h1 className="pr-20 text-[20px] font-semibold leading-7 tracking-[-0.4px] text-white">
+          <h1 className="font-head pr-20 text-[20px] font-semibold leading-7 tracking-[-0.4px] text-white">
             {clip.title}
           </h1>
           <p className="mt-1 pr-20 text-[14px] leading-5 text-white/80">@{clip.channel}</p>

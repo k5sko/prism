@@ -49,6 +49,28 @@ def test_overlap_dedup_and_order():
     ]
 
 
+def test_labels_carried_and_normalized():
+    sents = _sentences(3)
+    responses = [
+        {"moments": [
+            {"start_sentence": 0, "end_sentence": 1, "reason": "a",
+             "title": "  Focus  ", "hook": "Stop scrolling.", "summary": "About focus.",
+             "tags": ["focus", 42], "score": 2.5},          # score out of range, tag not a str
+            {"start_sentence": 2, "end_sentence": 2, "reason": "b"},  # labels missing entirely
+        ]},
+    ]
+    moments = segment_sentences(sents, FakeLLM(responses), chunk_size=100, overlap=10)
+
+    m0 = next(m for m in moments if m["start_sentence"] == 0)
+    assert m0["title"] == "Focus"                  # stripped
+    assert m0["hook"] == "Stop scrolling."
+    assert m0["tags"] == ["focus", "42"]           # coerced to str
+    assert m0["score"] == 1.0                       # clamped to [0,1]
+
+    m2 = next(m for m in moments if m["start_sentence"] == 2)
+    assert m2["title"] == "" and m2["tags"] == [] and m2["score"] == 0.0  # safe defaults
+
+
 def test_validation_clamps_and_drops():
     sents = _sentences(4)
     responses = [
