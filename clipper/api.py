@@ -99,6 +99,105 @@ def _shape(clip: Clip, channel: str) -> dict:
     }
 
 
+_INPUT_PRICE_PER_M = 3.0  # USD per 1M input tokens (Claude Sonnet 4.x)
+
+
+@app.get("/api/stats")
+def stats():
+    """Comprehensive transcript-compression stats across all processed videos —
+    powers the in-app badge and the judge-facing /stats view. Reads each job's
+    compression.json record (real Claude token counts) + DB clip counts."""
+    storage = get_storage()
+    with session_scope() as s:
+        jobs = list(s.exec(select(Job).order_by(Job.created_at.desc())).all())
+        clip_counts: dict = {}
+        for c in s.exec(select(Clip).where(Clip.status == ClipStatus.READY)).all():
+            clip_counts[c.job_id] = clip_counts.get(c.job_id, 0) + 1
+
+    orig = sent = saved = lines_b = lines_a = clips = 0
+    reductions: list = []
+    recent: list = []
+    model = None
+    for j in jobs:
+        try:
+            c = read_json(storage, j.id, "compression.json")
+        except Exception:
+            continue
+        if not c:
+            continue
+        o = int(c.get("original_tokens", 0))
+        st = int(c.get("sent_tokens", 0))
+        if o <= 0:
+            continue
+        sv = int(c.get("saved_tokens", max(0, o - st)))
+        orig += o
+        sent += st
+        saved += sv
+        lines_b += int(c.get("lines_before", 0))
+        lines_a += int(c.get("lines_after", 0))
+        red = float(c.get("reduction", 0.0))
+        reductions.append(red)
+        model = model or c.get("model")
+        nc = clip_counts.get(j.id, 0)
+        clips += nc
+        if len(recent) < 12:
+            recent.append({
+                "job_id": j.id,
+                "source": (j.source_ref or "")[:64],
+                "original_tokens": o,
+                "sent_tokens": st,
+                "saved_tokens": sv,
+                "reduction_pct": round(red * 100, 1),
+                "clips": nc,
+            })
+
+    nv = len(reductions)
+    pct = lambda x: round(x * 100, 1)  # noqa: E731
+    overall = (1 - sent / orig) if orig else 0.0
+    avg_saved = (saved / nv) if nv else 0
+
+    return {
+        # --- flat keys (the in-app badge reads these) ---
+        "jobs": nv,
+        "saved_tokens": saved,
+        "reduction": round(overall, 3),
+        # --- rich detail (the /stats view) ---
+        "enabled": get_settings().compress_segment,
+        "technique": "extractive sentence pruning + compact metadata format (index-preserving)",
+        "model": model or get_settings().llm_model,
+        "videos_processed": nv,
+        "clips_generated": clips,
+        "tokens": {
+            "original": orig,
+            "sent": sent,
+            "saved": saved,
+            "reduction_pct": pct(overall),
+        },
+        "per_video": {
+            "avg_saved_tokens": round(avg_saved),
+            "avg_reduction_pct": round(sum(reductions) / nv * 100, 1) if nv else 0,
+            "best_reduction_pct": pct(max(reductions)) if reductions else 0,
+            "worst_reduction_pct": pct(min(reductions)) if reductions else 0,
+        },
+        "sentences": {
+            "lines_before": lines_b,
+            "lines_after": lines_a,
+            "dropped_pct": round((1 - lines_a / lines_b) * 100, 1) if lines_b else 0,
+        },
+        "cost": {
+            "input_price_per_1m_usd": _INPUT_PRICE_PER_M,
+            "saved_usd": round(saved / 1e6 * _INPUT_PRICE_PER_M, 5),
+            "saved_usd_per_1k_videos": round(avg_saved / 1e6 * _INPUT_PRICE_PER_M * 1_000, 3),
+            "saved_usd_per_100k_videos": round(avg_saved / 1e6 * _INPUT_PRICE_PER_M * 100_000, 1),
+        },
+        "equivalents": {
+            "words_saved": round(saved * 0.75),  # ~0.75 words/token
+            "pages_saved": round(saved * 0.75 / 500, 1),  # ~500 words/page
+        },
+        "recent": recent,
+    }
+
+
 @app.get("/api/clips")
 def list_clips(job_id: Optional[str] = None):
     """Ready clips ranked by score. Pass job_id to scope to one video's clips,

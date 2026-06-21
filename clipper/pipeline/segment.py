@@ -22,12 +22,34 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
+from ..compress import compress
 from ..config import get_settings
 from ..llm import LLMClient
 from ..storage import Storage, read_json, write_json
 
 SENTENCES = "sentences.json"
 ARTIFACT = "moments.json"
+COMPRESSION = "compression.json"  # per-job token-savings record (for showable stats)
+
+
+def _est_tokens(text: str) -> int:
+    # ~4 chars/token; fallback when the real tokenizer isn't reachable.
+    return max(1, len(text) // 4)
+
+
+def _count_tokens(llm: "LLMClient", prompt: str) -> int:
+    """Real Claude input-token count for the full segment call (prompt + system).
+    Falls back to the char estimate if the count API is unavailable."""
+    try:
+        client = llm._ensure_client()
+        r = client.messages.count_tokens(
+            model=get_settings().llm_model,
+            system=_SYSTEM,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return int(r.input_tokens)
+    except Exception:
+        return _est_tokens(prompt) + _est_tokens(_SYSTEM)
 
 # Label fields the model produces per moment, alongside its sentence range.
 _LABEL_KEYS = ("title", "hook", "summary", "tags", "score")
@@ -89,10 +111,16 @@ def _chunk_indices(n: int, size: int, overlap: int) -> List[Tuple[int, int]]:
     return windows
 
 
-def _build_prompt(sentences: List[dict], lo: int, hi: int) -> str:
+def _build_prompt(sentences: List[dict], lo: int, hi: int, compact: bool = False) -> str:
+    fmt_note = (
+        "Each line is `index|start_second| text` — infer a sentence's end from the "
+        "next line's start (times in seconds). Some low-content sentences are "
+        "omitted; a moment range may still span them."
+        if compact
+        else "Below are numbered transcript sentences with their [start–end] times in seconds."
+    )
     lines = [
-        "Below are numbered transcript sentences with their [start–end] times in "
-        "seconds. Identify the self-contained moments worth clipping and write "
+        f"{fmt_note} Identify the self-contained moments worth clipping and write "
         "each one's publishing metadata.",
         "",
         "Boundary rules:",
@@ -114,7 +142,10 @@ def _build_prompt(sentences: List[dict], lo: int, hi: int) -> str:
         "Sentences:",
     ]
     for s in sentences:
-        lines.append(f"[{s['idx']}] ({s['start']:.1f}-{s['end']:.1f}s) {s['text']}")
+        if compact:
+            lines.append(f"{s['idx']}|{float(s['start']):.0f}| {s['text']}")
+        else:
+            lines.append(f"[{s['idx']}] ({float(s['start']):.1f}-{float(s['end']):.1f}s) {s['text']}")
     return "\n".join(lines)
 
 
@@ -169,15 +200,48 @@ def segment_sentences(
     llm: LLMClient,
     chunk_size: int,
     overlap: int,
-) -> List[dict]:
+    *,
+    compress_enabled: bool = True,
+    keep_ratio: float = 0.6,
+) -> Tuple[List[dict], dict]:
+    """Returns (moments, stats). `stats` records the before/after token counts
+    of the segment prompts so we can show the compression savings."""
     n = len(sentences)
     raw: List[dict] = []
-    for lo, hi in _chunk_indices(n, chunk_size, overlap):
-        prompt = _build_prompt(sentences[lo : hi + 1], lo, hi)
+    orig_tokens = sent_tokens = 0
+    orig_lines = sent_lines = 0
+    chunks = _chunk_indices(n, chunk_size, overlap)
+    for lo, hi in chunks:
+        chunk = sentences[lo : hi + 1]
+        full_prompt = _build_prompt(chunk, lo, hi)
+        orig = _count_tokens(llm, full_prompt)
+        orig_tokens += orig
+        orig_lines += len(chunk)
+        if compress_enabled:
+            kept = compress(chunk, keep_ratio=keep_ratio)
+            prompt = _build_prompt(kept, lo, hi, compact=True)
+            sent_lines += len(kept)
+            sent_tokens += _count_tokens(llm, prompt)
+        else:
+            prompt = full_prompt
+            sent_lines += len(chunk)
+            sent_tokens += orig
         result = llm.complete_json(prompt, MOMENTS_SCHEMA, system=_SYSTEM)
         for m in (result or {}).get("moments", []):
             raw.append(m)
-    return _validate(raw, n)
+    stats = {
+        "compressed": compress_enabled,
+        "model": get_settings().llm_model,
+        "chunks": len(chunks),
+        "transcript_sentences": n,
+        "lines_before": orig_lines,
+        "lines_after": sent_lines,
+        "original_tokens": orig_tokens,
+        "sent_tokens": sent_tokens,
+        "saved_tokens": max(0, orig_tokens - sent_tokens),
+        "reduction": round(1 - sent_tokens / orig_tokens, 3) if orig_tokens else 0.0,
+    }
+    return _validate(raw, n), stats
 
 
 def run(
@@ -196,8 +260,14 @@ def run(
     sentences = read_json(storage, job_id, SENTENCES)
     llm = llm or LLMClient()
     settings = get_settings()
-    moments = segment_sentences(
-        sentences, llm, settings.segment_chunk_size, settings.segment_chunk_overlap
+    moments, stats = segment_sentences(
+        sentences,
+        llm,
+        settings.segment_chunk_size,
+        settings.segment_chunk_overlap,
+        compress_enabled=settings.compress_segment,
+        keep_ratio=settings.compress_keep_ratio,
     )
     write_json(storage, moments, job_id, ARTIFACT)
+    write_json(storage, stats, job_id, COMPRESSION)  # showable token-savings record
     return moments

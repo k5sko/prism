@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     segment_chunk_size: int = 120           # sentences per LLM chunk
     segment_chunk_overlap: int = 15         # overlap so cross-edge moments survive
 
+    # --- transcript compression (token reduction for the segment call) ----
+    compress_segment: bool = True           # extractive filler-strip + salience prune
+    compress_keep_ratio: float = 0.6        # fraction of sentences kept (~2x token cut)
+
     # --- boundaries (the crux) --------------------------------------------
     pad_lead_in: float = 0.25               # seconds added before a clip
     pad_tail: float = 0.35                  # seconds added after a clip

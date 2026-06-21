@@ -21,6 +21,11 @@ export async function listClips(jobId) {
   return asJson(await fetch(`/api/clips${q}`))
 }
 
+// Aggregate transcript-compression savings (powers the "tokens saved" badge).
+export async function getStats() {
+  return asJson(await fetch('/api/stats'))
+}
+
 // Topic -> tailored flashcard questions (or a clarification prompt).
 export async function getQuestionnaire(topic) {
   return asJson(

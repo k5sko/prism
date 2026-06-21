@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { checkTopic, createJob, getJob, getQuestionnaire, startLearning, uploadVideo } from '../api.js'
+import { checkTopic, createJob, getJob, getQuestionnaire, getStats, startLearning, uploadVideo } from '../api.js'
 import JobProgress from '../components/JobProgress.jsx'
 import Questionnaire from './Questionnaire.jsx'
 
@@ -28,12 +28,14 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
   const [jobs, setJobs] = useState([]) // [{job_id, topic, video?, query?, stage, error}]
   const [note, setNote] = useState('') // e.g. classes we couldn't find videos for
   const [error, setError] = useState(null)
+  const [stats, setStats] = useState(null) // transcript-compression savings badge
   const cancelled = useRef(false)
   const nextId = useRef(2)
 
   useEffect(() => {
     // Reset on (re)mount so StrictMode's mount→unmount→remount doesn't freeze polling.
     cancelled.current = false
+    getStats().then(setStats).catch(() => {})
     return () => {
       cancelled.current = true
     }
@@ -515,6 +517,22 @@ export default function CreateClips({ libraryCount = 0, onDone, onBrowse }) {
               {libraryCount}
             </span>
           </button>
+        )}
+
+        {/* Token-compression savings — the optimisation, made visible */}
+        {phase === 'input' && !checking && stats && stats.saved_tokens > 0 && (
+          <div className="mt-3 flex shrink-0 items-center gap-2.5 rounded-sm border border-gray-a-200 bg-bg-100 px-3 py-2.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="shrink-0 text-accent-500">
+              <path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H13l0-8z" fill="currentColor" />
+            </svg>
+            <p className="text-[12px] leading-4 text-gray-900">
+              <span className="font-semibold text-gray-1000">
+                {stats.saved_tokens.toLocaleString()} tokens saved
+              </span>{' '}
+              · transcripts sent to the LLM are {Math.round(stats.reduction * 100)}% smaller
+              <span className="text-gray-700"> (across {stats.jobs} video{stats.jobs === 1 ? '' : 's'})</span>
+            </p>
+          </div>
         )}
       </div>
     </div>
