@@ -21,7 +21,7 @@ import asyncio
 import os
 import uuid
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,6 +35,7 @@ from .finder import assess_specificity, find_video
 from .llm import LLMClient
 from .pipeline import orchestrator
 from .questionnaire import generate_questions, plan_videos
+from .quiz import generate_quiz
 from .storage import get_storage, read_json
 
 # Cap how many videos clip concurrently. Virtual clips removed the ffmpeg render
@@ -230,6 +231,34 @@ def list_clips(job_id: Optional[str] = None):
             channel = _channel_for(job, storage, cache) if job else "Clip"
             out.append(_shape(c, channel))
     return {"clips": out}
+
+
+class QuizIn(BaseModel):
+    clip_ids: List[str] = []
+    n: int = 2
+
+
+@app.post("/api/quiz")
+async def quiz(body: QuizIn):
+    """Recently-watched clip ids (most-recent first) -> a 1-2 question
+    comprehension quiz (LLM). Returns {questions: []} when there's nothing to
+    quiz on or generation fails — the feed just skips the check."""
+    ids = [x for x in (body.clip_ids or []) if x][:6]
+    if not ids:
+        return {"questions": []}
+    with session_scope() as s:
+        rows = s.exec(select(Clip).where(Clip.id.in_(ids))).all()
+        by_id = {c.id: c for c in rows}
+        ctx = []
+        for cid in ids:  # preserve caller order (most-recent first)
+            c = by_id.get(cid)
+            if c:
+                ctx.append({"title": c.title, "summary": c.summary, "tags": c.tag_list()})
+    if not ctx:
+        return {"questions": []}
+    n = max(1, min(int(body.n or 2), 3))
+    questions = await asyncio.to_thread(generate_quiz, ctx, LLMClient(), n)
+    return {"questions": questions}
 
 
 @app.get("/api/jobs/{job_id}/video")
