@@ -3,7 +3,12 @@ import ClipStage from '../components/ClipStage.jsx'
 import ActionRail from '../components/ActionRail.jsx'
 import SubjectTag from '../components/SubjectTag.jsx'
 import RelevanceBadge from '../components/RelevanceBadge.jsx'
+import QuizCard from '../components/QuizCard.jsx'
+import { makeQuiz } from '../api.js'
 import usePrefersReducedMotion from '../hooks/usePrefersReducedMotion.js'
+
+// Variable "every ~5 reels" cadence — a 4–7 reel gap so it's never on the dot.
+const quizGap = () => 4 + Math.floor(Math.random() * 4)
 
 // Screen 2 — immersive, swipeable reel feed playing the rendered clips.
 export default function Feed({
@@ -37,6 +42,31 @@ export default function Feed({
     return onSaveLesson?.(clip)
   }
 
+  // --- interstitial comprehension quiz ---
+  const [quiz, setQuiz] = useState(null) // active quiz (array of MCQs) or null
+  const watchedCountRef = useRef(0)
+  const recentRef = useRef([]) // last few watched clips, most-recent first
+  const nextQuizAtRef = useRef(quizGap()) // first check after 4–7 reels
+  const quizBusyRef = useRef(false)
+
+  // Fetch a quiz on the recently-watched clips and slide it up over the feed.
+  // Schedules the next check immediately so a failed/empty fetch still spaces out.
+  const triggerQuiz = async () => {
+    quizBusyRef.current = true
+    nextQuizAtRef.current = watchedCountRef.current + quizGap()
+    try {
+      const { questions } = await makeQuiz(recentRef.current.map((c) => c.id), 2)
+      if (questions && questions.length) {
+        setPlaying(false)
+        setQuiz(questions)
+      }
+    } catch {
+      /* no quiz this round — the feed just keeps playing */
+    } finally {
+      quizBusyRef.current = false
+    }
+  }
+
   useEffect(() => {
     slideRefs.current[focusIndex]?.scrollIntoView({ block: 'start' })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -63,7 +93,19 @@ export default function Feed({
     setProgress(0)
     const prev = prevActiveRef.current
     if (prev !== active && clips[prev]) {
-      onWatched?.(clips[prev], lastProgressRef.current, engagedRef.current.has(clips[prev].id))
+      const watched = clips[prev]
+      // engaged flag: liked/saved -> not a discard (recsys style signal)
+      onWatched?.(watched, lastProgressRef.current, engagedRef.current.has(watched.id))
+      // accumulate recently-watched clips and trip a quiz every 4–7 reels
+      recentRef.current = [watched, ...recentRef.current.filter((c) => c.id !== watched.id)].slice(0, 5)
+      watchedCountRef.current += 1
+      if (
+        !quizBusyRef.current &&
+        recentRef.current.length >= 2 &&
+        watchedCountRef.current >= nextQuizAtRef.current
+      ) {
+        triggerQuiz()
+      }
     }
     prevActiveRef.current = active
     lastProgressRef.current = 0
@@ -229,6 +271,16 @@ export default function Feed({
           </section>
         )}
       </div>
+
+      {quiz && (
+        <QuizCard
+          quiz={quiz}
+          onClose={() => {
+            setQuiz(null)
+            setPlaying(true)
+          }}
+        />
+      )}
 
       <div className="pointer-events-none absolute bottom-3 left-4 z-20 font-mono text-[12px] text-white/55">
         {Math.min(active + 1, clips.length)}/{clips.length} · for you

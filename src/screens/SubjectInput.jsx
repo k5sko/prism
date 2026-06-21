@@ -31,7 +31,7 @@ export default function SubjectInput({ selected, setSelected, onFind }) {
 
       <div className="relative flex h-full flex-col px-5 pb-5 pt-9">
         <header className="mb-7">
-          <p className="mb-2 font-mono text-[13px] text-gray-900">Reel Learning</p>
+          <p className="mb-2 font-mono text-[13px] text-gray-900">Prism</p>
           <h1 className="text-[34px] font-semibold leading-[40px] tracking-[-1.4px] text-gray-1000">
             Study, but make it
             <br />a feed.

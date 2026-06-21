@@ -34,6 +34,18 @@ export async function getStats() {
   return asJson(await fetch(u('/api/stats'), { headers: NG }))
 }
 
+// Recently-watched clip ids (most-recent first) -> a 1-2 question MCQ quiz.
+// Returns { questions: [] } when there's nothing to quiz on or generation fails.
+export async function makeQuiz(clipIds, n = 2) {
+  return asJson(
+    await fetch(u('/api/quiz'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...NG },
+      body: JSON.stringify({ clip_ids: clipIds, n }),
+    }),
+  )
+}
+
 // Topic -> tailored flashcard questions (or a clarification prompt).
 export async function getQuestionnaire(topic) {
   return asJson(
@@ -98,6 +110,17 @@ export async function uploadVideo(file) {
   const fd = new FormData()
   fd.append('file', file)
   return asJson(await fetch(u('/api/upload'), { method: 'POST', headers: NG, body: fd }))
+}
+
+// LLM-generated practice questions for a subject (context = grounding snippets).
+export async function generatePractice(subject, context = [], n = 5) {
+  return asJson(
+    await fetch(u('/api/practice'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...NG },
+      body: JSON.stringify({ subject, context, n }),
+    }),
+  )
 }
 
 // --- recsys recommender (mounted in the same /api namespace) ----------------

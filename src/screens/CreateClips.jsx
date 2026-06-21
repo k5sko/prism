@@ -266,7 +266,7 @@ export default function CreateClips({ onDone }) {
 
       <div className="relative flex h-full flex-col px-6 pb-6 pt-10">
         <header className="mb-7">
-          <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.2em] text-gray-700">Reel Learning</p>
+          <p className="mb-3 font-mono text-[11px] uppercase tracking-[0.2em] text-gray-700">Prism</p>
           <h1 className="font-head text-[33px] font-semibold leading-[39px] tracking-[-1.1px] text-gray-1000">
             Learn all your
             <br />classes, as a feed.
